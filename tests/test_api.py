@@ -211,3 +211,8 @@ def test_other_devices_cannot_point_camera_at_this_computer(tmp_path):
         assert r.status_code == 400 and "localhost" in r.json()["detail"]
         r = remote.post("/api/sources/phone", json={"ip": "127.0.0.1"})
         assert r.status_code == 400
+        # Host names are refused from other devices (they could be re-pointed after the check)
+        r = remote.post("/api/sources", json={"source": "http://localhost:8000/api/health"})
+        assert r.status_code == 400 and "IP address" in r.json()["detail"]
+        r = remote.post("/api/sources", json={"source": "http://camera.example.com/video"})
+        assert r.status_code == 400 and "IP address" in r.json()["detail"]
