@@ -88,4 +88,6 @@ Press **Q** in the camera window to stop.
 
 - Souvik Banerjee ([@myselfsouvik](https://github.com/myselfsouvik))
 - Jagrit Mondal ([@Jagrit-Dev](https://github.com/Jagrit-Dev))
-- *(add other teammates)*
+- Samaraho
+- Nandini
+- Shalmali
