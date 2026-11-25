@@ -15,6 +15,11 @@ A computer-vision mini project that uses a webcam and **YOLO11** to detect dogs 
 ```
 MINI-PROJECT/
 ├── backend/             # (in progress) FastAPI server, cameras, inference
+│   ├── server.py        # start the web server: python -m backend.server
+│   ├── app.py           # API routes, live video stream, WebSocket
+│   ├── pipeline.py      # detection + tracking + behaviour per camera
+│   ├── behaviour.py     # speed and RESTING / WALKING / RUNNING labels
+│   ├── db.py            # SQLite storage
 │   ├── cameras.py       # CameraSource: webcam / USB phone / Wi-Fi phone / video file
 │   └── camera_test.py   # command-line camera checker
 ├── docs/PHONE_CAMERA.md # how to connect a phone as the camera
@@ -65,6 +70,14 @@ The scripts find the model and data files themselves, so you can run them from a
 | `python legacy/preprocessing.py` | Cleans the bites dataset and writes `data/tabular/cleaned_animal_bites_dogs.csv` |
 
 Press **Q** in the camera window to stop.
+
+### Backend server (new)
+
+```bash
+python -m backend.server --source 0        # or 1 for a USB phone, or a video file
+```
+
+Open http://127.0.0.1:8000 for live video with dog boxes, activity labels, saved dogs and events, and http://127.0.0.1:8000/docs for the API. Details: [backend/README.md](backend/README.md).
 
 ### Testing a camera (laptop, phone over USB or Wi-Fi)
 

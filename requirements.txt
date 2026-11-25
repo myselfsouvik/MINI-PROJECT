@@ -3,6 +3,14 @@ ultralytics>=8.3
 opencv-python>=4.9
 numpy>=1.26
 
+# Object tracking (ByteTrack) used by ultralytics
+lap>=0.5
+
+# Backend web server
+fastapi>=0.115
+uvicorn[standard]>=0.30
+httpx>=0.27          # used by FastAPI's test client
+
 # Data / classical ML
 pandas>=2.1
 scikit-learn>=1.4
