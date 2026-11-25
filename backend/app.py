@@ -21,6 +21,9 @@ Main endpoints (all JSON unless noted)
     GET    /api/stats/activity                seconds per activity
     GET    /api/settings  PATCH /api/settings detection confidence etc.
     WS     /ws/live                           pushes live status + new events twice a second
+    GET    /api/phone-link                    link + QR code for phones (server started with --phone)
+    GET    /api/phone-link/qr.svg
+    WS     /ws/phone                          a phone's browser sends JPEG frames here (page: /phone)
     GET    /media/...                         saved dog snapshots
 
 Access: requests from this computer are always allowed. Other devices must
@@ -43,7 +46,8 @@ from fastapi.responses import FileResponse, JSONResponse, Response, StreamingRes
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from backend.cameras import PHONE_APPS, CameraSource, list_local_cameras, phone_url
+from backend.cameras import PHONE_APPS, CameraSource, PushCameraSource, list_local_cameras, phone_url
+from backend.phone import lan_ips, qr_svg
 from backend.db import Database
 from backend.pipeline import Pipeline, PipelineSettings
 from backend.security import check_source, is_local_client, token_ok
@@ -62,6 +66,12 @@ class AppSettings:
     media_dir: str = str(ROOT / "recordings")
     # Other devices on the network must send this token. None = only this computer.
     access_token: str | None = None
+    # Port of the HTTPS server for phones (None = phone browser connection off).
+    phone_port: int | None = None
+
+
+PUBLIC_PAGES = {"/", "/phone"}   # pages with no data in them; the API still needs the token
+MAX_PHONES = 4
 
 
 # ----------------------------------------------------------------------------
@@ -109,6 +119,10 @@ class SourceManager:
             if p.camera.kind == cam.kind and str(p.camera.value) == str(cam.value):
                 raise ValueError(f"{cam.name} is already being watched.")
         cam.start()                                          # raises RuntimeError if it can't open
+        return self.add_camera(cam)
+
+    def add_camera(self, cam: CameraSource) -> str:
+        """Start a detection pipeline for a camera that is already open."""
         with self._lock:
             source_id = f"cam{next(self._ids)}"
         # Each pipeline gets its own copy of the settings object reference so
@@ -171,17 +185,28 @@ def create_app(settings: AppSettings | None = None, initial_sources: list[str] |
     db = Database(storage / "dogwatch.db")
     manager = SourceManager(settings, db)
 
+    # The same app can be served twice (HTTP for this laptop + HTTPS for
+    # phones), and each server runs the lifespan. Only the first start and the
+    # last stop do any work.
+    servers_running = {"n": 0}
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        for s in initial_sources or []:
-            try:
-                sid = await asyncio.to_thread(manager.add, s)
-                print(f"[startup] watching {s} as {sid}")
-            except (ValueError, RuntimeError) as e:
-                print(f"[startup] could not open {s}: {e}")
-        yield
-        await asyncio.to_thread(manager.stop_all)
-        db.close()
+        servers_running["n"] += 1
+        if servers_running["n"] == 1:
+            for s in initial_sources or []:
+                try:
+                    sid = await asyncio.to_thread(manager.add, s)
+                    print(f"[startup] watching {s} as {sid}")
+                except (ValueError, RuntimeError) as e:
+                    print(f"[startup] could not open {s}: {e}")
+        try:
+            yield
+        finally:
+            servers_running["n"] -= 1
+            if servers_running["n"] == 0:
+                await asyncio.to_thread(manager.stop_all)
+                db.close()
 
     app = FastAPI(title="Street Dog Monitoring System", version="0.3.0", lifespan=lifespan)
     app.state.manager = manager
@@ -198,8 +223,8 @@ def create_app(settings: AppSettings | None = None, initial_sources: list[str] |
 
     @app.middleware("http")
     async def access_control(request: Request, call_next):
-        # The test page itself holds no data; everything else needs access.
-        if request.url.path != "/":
+        # The two pages hold no data; everything else needs access.
+        if request.url.path not in PUBLIC_PAGES:
             client = request.client.host if request.client else None
             if not is_local_client(client):
                 given = request.headers.get("x-access-token") or request.query_params.get("token")
@@ -219,6 +244,90 @@ def create_app(settings: AppSettings | None = None, initial_sources: list[str] |
     @app.get("/", include_in_schema=False)
     def index():
         return FileResponse(STATIC_DIR / "index.html")
+
+    @app.get("/phone", include_in_schema=False)
+    def phone_page():
+        return FileResponse(STATIC_DIR / "phone.html")
+
+    # -- phone connected through its browser -----------------------------------
+
+    def phone_links() -> list[str]:
+        if not settings.phone_port:
+            return []
+        token = f"?token={settings.access_token}" if settings.access_token else ""
+        return [f"https://{ip}:{settings.phone_port}/phone{token}" for ip in lan_ips()]
+
+    @app.get("/api/phone-link")
+    def phone_link():
+        links = phone_links()
+        return {
+            "enabled": bool(settings.phone_port),
+            "urls": links,
+            "qr_url": "/api/phone-link/qr.svg" if links else None,
+            "phones_connected": sum(1 for p in manager.pipelines.values() if p.camera.kind == "phone"),
+            "hint": None if settings.phone_port else
+                    "Start the server with --phone to connect phones from their browser.",
+        }
+
+    @app.get("/api/phone-link/qr.svg")
+    def phone_link_qr(index: int = Query(0, ge=0)):
+        links = phone_links()
+        if index >= len(links):
+            raise HTTPException(404, "Phone connection is not enabled or no Wi-Fi address found.")
+        return Response(qr_svg(links[index]), media_type="image/svg+xml",
+                        headers={"Cache-Control": "no-store"})
+
+    @app.websocket("/ws/phone")
+    async def ws_phone(ws: WebSocket):
+        """
+        A phone's browser sends JPEG frames as binary messages. After each
+        frame we answer with what the detector currently sees, so the phone
+        can show it and knows it may send the next frame (no backlog builds up).
+        """
+        client = ws.client.host if ws.client else None
+        if not is_local_client(client) and not token_ok(settings.access_token, ws.query_params.get("token")):
+            await ws.close(code=1008)
+            return
+        phones = sum(1 for p in manager.pipelines.values() if p.camera.kind == "phone")
+        if phones >= MAX_PHONES:
+            await ws.accept()
+            await ws.send_json({"type": "error", "message": f"Already {MAX_PHONES} phones connected."})
+            await ws.close()
+            return
+
+        await ws.accept()
+        raw_name = (ws.query_params.get("name") or "").strip()[:40]
+        name = raw_name or f"Phone {phones + 1}"
+        cam = PushCameraSource(name).start()
+        try:
+            sid = await asyncio.to_thread(manager.add_camera, cam)
+        except Exception as e:
+            await ws.send_json({"type": "error", "message": f"Could not start detection: {e}"})
+            await ws.close()
+            return
+        await ws.send_json({"type": "ready", "id": sid, "name": name})
+
+        try:
+            while True:
+                msg = await ws.receive()
+                if msg["type"] == "websocket.disconnect":
+                    break
+                data = msg.get("bytes")
+                if data is None:
+                    continue                     # text messages (pings) are ignored
+                ok = cam.push_jpeg(data)
+                live = manager.pipelines[sid].snapshot_live() if sid in manager.pipelines else {}
+                await ws.send_json({
+                    "type": "ack", "ok": ok,
+                    "dogs": [{"dog_id": d["dog_id"], "activity": d["activity"]} for d in live.get("dogs", [])],
+                    "people": live.get("people", 0),
+                    "detector_fps": live.get("inference_fps", 0),
+                })
+        except (WebSocketDisconnect, RuntimeError):
+            pass
+        finally:
+            if sid in manager.pipelines:
+                await asyncio.to_thread(manager.remove, sid)
 
     @app.get("/api/health")
     def health():

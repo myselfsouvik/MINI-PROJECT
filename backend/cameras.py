@@ -342,3 +342,62 @@ class CameraSource:
                 self.stats.last_error = ""
                 return
             self._stop.wait(self.RECONNECT_DELAY)
+
+
+# ----------------------------------------------------------------------------
+# PushCameraSource: frames sent to us (phone browser over WebSocket)
+# ----------------------------------------------------------------------------
+
+class PushCameraSource(CameraSource):
+    """
+    A camera whose frames are *pushed* to the server instead of read from a
+    device. Used for phones that open the /phone page in their browser: the
+    page sends JPEG frames over a WebSocket and the server calls ``push_jpeg``.
+
+    It behaves like ``CameraSource`` (read / wait_frame / frame_id / info), so
+    the detection pipeline doesn't need to know the difference.
+    """
+
+    MAX_JPEG_BYTES = 2_000_000   # ignore anything bigger than ~2 MB per frame
+
+    def __init__(self, name: str):
+        # Skip CameraSource.__init__'s parse_source: there's no device to open.
+        self.kind, self.value = "phone", name
+        self.name = name
+        self.loop = False
+        self.realtime = True
+        self.req_width = self.req_height = None
+        self.stats = CameraStats()
+        self._cap = None
+        self._frame = None
+        self._frame_id = 0
+        self._lock = threading.Lock()
+        self._new_frame = threading.Condition(self._lock)
+        self._stop = threading.Event()
+        self._thread = None
+        self._finished = False
+        self._connected = False
+
+    def start(self, timeout: float = 0.0) -> "PushCameraSource":
+        self._connected = True
+        self._stop.clear()
+        return self
+
+    def stop(self) -> None:
+        self._connected = False
+        self._stop.set()
+        self._mark_finished()
+
+    @property
+    def is_running(self) -> bool:
+        return self._connected
+
+    def push_jpeg(self, data: bytes) -> bool:
+        """Decode one JPEG frame from the phone. Returns False if it isn't a valid image."""
+        if not self._connected or not data or len(data) > self.MAX_JPEG_BYTES:
+            return False
+        frame = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
+        if frame is None:
+            return False
+        self._publish(frame)
+        return True

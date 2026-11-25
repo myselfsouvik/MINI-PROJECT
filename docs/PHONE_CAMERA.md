@@ -11,7 +11,7 @@ python -m backend.camera_test --source 1 --detect # try one, with dog detection
 |---|---|---|---|
 | A. DroidCam / Iriun over **USB (Type-C)** | Yes | The demo: steady and no lag | Webcam number, e.g. `1` |
 | B. IP Webcam / DroidCam over **Wi-Fi** | No | Walking around, phone on a stand | URL, e.g. `http://192.168.1.5:8080/video` |
-| C. Phone **browser** (QR code) | No | No app to install | Coming in a later checkpoint |
+| C. Phone **browser** (QR code) ⭐ | No | No app to install, quickest to set up | Connects itself |
 
 > **Why not Bluetooth?** Bluetooth carries roughly 1–2 Mbps, not enough for live video, and there's no standard Bluetooth webcam mode. USB and Wi-Fi do the job properly.
 
@@ -45,6 +45,22 @@ Uses **DroidCam** (Android + iPhone) or **Iriun Webcam** (Android + iPhone). Bot
    python -m backend.camera_test --source http://192.168.1.5:8080/video
    ```
 
+## C. Phone browser with a QR code (no app)
+
+1. Start the server with phone support:
+   ```bash
+   python -m backend.server --phone
+   ```
+   The first time, Windows asks whether Python may use the network: allow it on **Private networks**.
+2. Phone and laptop on the **same Wi-Fi** (or the laptop on the phone's hotspot).
+3. On the laptop open http://127.0.0.1:8000, click **Show QR code** and scan it with the phone camera.
+4. The phone warns that the connection isn't private. That's expected: the server uses its own (self-signed) certificate.
+   - **Chrome / Android:** *Advanced → Proceed to …*
+   - **Safari / iPhone:** *Show Details → visit this website*
+5. Tap **Start camera** and allow camera access. The phone shows how many dogs the laptop sees; the laptop shows the full live view.
+
+The QR link contains an access token, so only people who can see the laptop screen can connect. Up to 4 phones at once; each appears as its own camera. **Flip** switches between back and front cameras. Keep the screen on (the page tries to stop it from sleeping).
+
 ## Troubleshooting
 
 | Problem | Fix |
@@ -54,3 +70,6 @@ Uses **DroidCam** (Android + iPhone) or **Iriun Webcam** (Android + iPhone). Bot
 | `Could not open stream …` | Open the URL in a browser first. Check both devices are on the same network; switch to the phone hotspot. |
 | Video is laggy over Wi-Fi | Lower the resolution in the phone app (640×480 is plenty for detection), or use USB. |
 | Phone screen turns off and stream stops | Keep the app in the foreground and disable screen timeout / battery saver. |
+| QR page says "must be opened with https://" | Use the QR code / link from the laptop (it starts with `https://` and port 8443). |
+| QR page loads forever | Same Wi-Fi? Allowed Python through the Windows firewall? Try the phone hotspot. |
+| "Camera permission was denied" | Browser settings → Site settings → Camera → allow for the laptop's address, then reload. |
