@@ -50,6 +50,13 @@
   .qr img { width: 180px; height: 180px; background: #fff; border-radius: 8px; padding: 6px; }
   .qr > div { flex: 1 1 220px; min-width: 0; }
   .qr code { word-break: break-all; }
+  .vwrap { position: relative; }
+  .vwrap svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+  .vwrap.drawing img { cursor: crosshair; outline: 2px solid var(--accent); }
+  ul.zones { list-style: none; margin: 8px 0 0; padding: 0; }
+  ul.zones li { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; border-bottom: 1px solid var(--line); }
+  ul.events li.alert { color: var(--danger); font-weight: 600; }
+  ul.events li.alert a { font-weight: normal; }
   .bar { display: flex; height: 14px; border-radius: 7px; overflow: hidden; background: var(--bg); }
 </style>
 </head>
@@ -79,13 +86,28 @@
 
     <div class="panel">
       <div class="tabs" id="tabs"><span class="muted">No cameras yet.</span></div>
-      <img id="video" class="video" alt="Live camera">
+      <div class="vwrap" id="vwrap">
+        <img id="video" class="video" alt="Live camera">
+        <svg id="drawLayer"></svg>
+      </div>
       <div class="stats" id="stats"></div>
     </div>
 
     <div class="panel">
+      <h2>Zones (alert when a dog walks in)</h2>
+      <form id="zoneForm">
+        <button type="button" id="drawBtn">Draw a zone</button>
+        <input id="zoneName" placeholder="Zone name, e.g. School gate" maxlength="40">
+        <button id="saveZone" disabled>Save zone</button>
+        <button type="button" class="ghost" id="clearZone">Clear</button>
+      </form>
+      <p class="muted" id="zoneHint" style="margin:8px 0 0">Pick a camera, press <b>Draw a zone</b>, then click at least 3 corners on the video.</p>
+      <ul class="zones" id="zones"></ul>
+    </div>
+
+    <div class="panel">
       <h2>Dogs visible now</h2>
-      <table><thead><tr><th>Dog</th><th>Activity</th><th>Speed (box h/s)</th><th>Conf.</th><th>Visible</th></tr></thead>
+      <table><thead><tr><th>Dog</th><th>Activity</th><th>Speed (box h/s)</th><th>Conf.</th><th>Visible</th><th>In zone</th></tr></thead>
       <tbody id="liveDogs"></tbody></table>
     </div>
   </section>
@@ -154,7 +176,77 @@ async function loadSources() {
 function showStream() {
   const want = current ? withToken(`/api/sources/${current}/stream.mjpg`) : "";
   const img = $("video");
-  if (img.dataset.src !== want) { img.dataset.src = want; img.src = want || ""; }
+  if (img.dataset.src !== want) { img.dataset.src = want; img.src = want || ""; loadZones(); }
+}
+
+// -- zones ---------------------------------------------------------------------
+const ALERT_TYPES = ["zone_entered", "dog_running_at_person", "dog_pack"];
+let drawing = false, draft = [], zones = [];
+
+// Where the picture actually is inside the <img> (object-fit: contain adds bars).
+function pictureRect() {
+  const img = $("video"), r = img.getBoundingClientRect();
+  const nw = img.naturalWidth || 16, nh = img.naturalHeight || 9;
+  const scale = Math.min(r.width / nw, r.height / nh);
+  const w = nw * scale, h = nh * scale;
+  return { left: (r.width - w) / 2, top: (r.height - h) / 2, w, h, boxW: r.width, boxH: r.height };
+}
+
+function drawOverlay() {
+  const svg = $("drawLayer"), p = pictureRect();
+  svg.setAttribute("viewBox", `0 0 ${p.boxW} ${p.boxH}`);
+  const toPx = ([x, y]) => `${p.left + x * p.w},${p.top + y * p.h}`;
+  let out = "";
+  if (drawing || draft.length) {
+    out += `<polygon points="${draft.map(toPx).join(" ")}" fill="rgba(37,99,235,.25)" stroke="#2563eb" stroke-width="2"/>`;
+    out += draft.map(pt => { const [cx, cy] = toPx(pt).split(","); return `<circle cx="${cx}" cy="${cy}" r="5" fill="#2563eb"/>`; }).join("");
+  }
+  svg.innerHTML = out;
+}
+
+function setDrawing(on) {
+  drawing = on;
+  $("vwrap").classList.toggle("drawing", on);
+  $("video").style.pointerEvents = on ? "auto" : "";
+  $("drawBtn").textContent = on ? "Drawing… (click corners)" : "Draw a zone";
+  $("saveZone").disabled = draft.length < 3;
+  drawOverlay();
+}
+
+$("drawBtn").onclick = () => {
+  if (!current) { $("zoneHint").textContent = "Add a camera first."; return; }
+  setDrawing(!drawing);
+};
+$("clearZone").onclick = () => { draft = []; setDrawing(false); };
+$("video").onclick = (e) => {
+  if (!drawing) return;
+  const r = $("video").getBoundingClientRect(), p = pictureRect();
+  const x = (e.clientX - r.left - p.left) / p.w, y = (e.clientY - r.top - p.top) / p.h;
+  if (x < 0 || x > 1 || y < 0 || y > 1 || draft.length >= 20) return;
+  draft.push([+x.toFixed(4), +y.toFixed(4)]);
+  setDrawing(true);
+};
+window.addEventListener("resize", drawOverlay);
+
+$("zoneForm").onsubmit = async (e) => {
+  e.preventDefault();
+  if (!current || draft.length < 3) return;
+  const name = $("zoneName").value.trim() || `Zone ${zones.length + 1}`;
+  try {
+    await api(`/api/sources/${current}/zones`, { method: "POST", body: JSON.stringify({ name, points: draft }) });
+    draft = []; $("zoneName").value = ""; setDrawing(false); loadZones();
+    $("zoneHint").textContent = `Saved "${name}". You'll get an alert when a dog walks into it.`;
+  } catch (err) { $("zoneHint").textContent = err.message; }
+};
+
+async function loadZones() {
+  if (!current) { zones = []; $("zones").innerHTML = ""; return; }
+  zones = await api(`/api/sources/${current}/zones`).catch(() => []);
+  $("zones").innerHTML = zones.map(z => `<li><span>${esc(z.name)} <span class="muted">(${z.points.length} corners)</span></span>
+    <button class="ghost" data-z="${z.id}">Delete</button></li>`).join("") || '<li class="muted">No zones on this camera.</li>';
+  $("zones").querySelectorAll("button[data-z]").forEach(b => b.onclick = async () => {
+    await api(`/api/zones/${b.dataset.z}`, { method: "DELETE" }); loadZones();
+  });
 }
 
 $("addForm").onsubmit = async (e) => {
@@ -201,7 +293,9 @@ async function loadSide() {
   const [dogs, events, act] = await Promise.all([api("/api/dogs?limit=24"), api("/api/events?limit=40"), api("/api/stats/activity")]);
   $("dogs").innerHTML = dogs.map(d => `<figure>${d.snapshot_url ? `<img src="${withToken(d.snapshot_url + "?t=" + Math.floor(d.last_seen))}" alt="Dog ${d.id}">` : ""}
     <figcaption>#${d.id} · ${d.seconds_visible}s</figcaption></figure>`).join("") || '<span class="muted">None yet.</span>';
-  $("events").innerHTML = events.map(e => `<li><span class="muted">${fmtTime(e.ts)}</span> ${esc(e.message)}</li>`).join("") || '<li class="muted">None yet.</li>';
+  $("events").innerHTML = events.map(e => `<li class="${ALERT_TYPES.includes(e.type) ? "alert" : ""}">
+    <span class="muted">${fmtTime(e.ts)}</span> ${ALERT_TYPES.includes(e.type) ? "⚠ " : ""}${esc(e.message)}
+    ${e.snapshot_url ? ` <a href="${withToken(e.snapshot_url)}" target="_blank">photo</a>` : ""}</li>`).join("") || '<li class="muted">None yet.</li>';
   const s = act.seconds, total = s.RESTING + s.WALKING + s.RUNNING;
   $("actBar").innerHTML = total ? ["RESTING","WALKING","RUNNING"].map(a => `<div class="${a}" style="width:${100*s[a]/total}%"></div>`).join("") : "";
   $("actText").textContent = total ? `Resting ${s.RESTING}s · Walking ${s.WALKING}s · Running ${s.RUNNING}s` : "No data yet.";
@@ -220,8 +314,9 @@ function connectWs() {
       : "";
     $("liveDogs").innerHTML = live && live.dogs.length
       ? live.dogs.map(d => `<tr><td>#${d.dog_id}</td><td><span class="pill ${d.activity}">${d.activity}</span></td>
-          <td>${d.speed.toFixed(2)}</td><td>${(d.confidence*100).toFixed(0)}%</td><td>${d.seconds_visible}s</td></tr>`).join("")
-      : '<tr><td colspan="5" class="muted">No dogs in view.</td></tr>';
+          <td>${d.speed.toFixed(2)}</td><td>${(d.confidence*100).toFixed(0)}%</td><td>${d.seconds_visible}s</td>
+          <td>${esc((d.zones || []).join(", ") || "–")}</td></tr>`).join("")
+      : '<tr><td colspan="6" class="muted">No dogs in view.</td></tr>';
     if (data.events.length) { loadSide(); loadSources(); }
   };
   ws.onclose = () => setTimeout(connectWs, 2000);

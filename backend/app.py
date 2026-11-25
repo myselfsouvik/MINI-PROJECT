@@ -18,6 +18,10 @@ Main endpoints (all JSON unless noted)
     GET    /api/dogs                          dogs seen (newest first)
     GET    /api/dogs/{id}                     one dog + its observations
     GET    /api/events                        dog appeared / left / alerts
+    GET    /api/alerts                        only alerts (zone entered, running at person, pack)
+    GET    /api/sources/{id}/zones            zones drawn on this camera
+    POST   /api/sources/{id}/zones            {"name": "School gate", "points": [[x, y], ...]} (0..1)
+    DELETE /api/zones/{zone_id}
     GET    /api/stats/activity                seconds per activity
     GET    /api/settings  PATCH /api/settings detection confidence etc.
     WS     /ws/live                           pushes live status + new events twice a second
@@ -46,6 +50,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response, StreamingRes
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from backend.alerts import ALERT_TYPES
 from backend.cameras import PHONE_APPS, CameraSource, PushCameraSource, list_local_cameras, phone_url
 from backend.phone import lan_ips, qr_svg
 from backend.db import Database
@@ -96,6 +101,18 @@ class SettingsPatch(BaseModel):
     max_fps: float | None = Field(None, ge=0)
     draw_people: bool | None = None
     draw_trails: bool | None = None
+    draw_zones: bool | None = None
+    alert_zone: bool | None = None
+    alert_approach: bool | None = None
+    alert_pack: bool | None = None
+    pack_size: int | None = Field(None, ge=2, le=20)
+
+
+class AddZone(BaseModel):
+    name: str = Field(..., min_length=1, max_length=40, examples=["School gate"])
+    # Corners as fractions of the frame: [0, 0] is top-left, [1, 1] bottom-right.
+    points: list[tuple[float, float]] = Field(..., min_length=3, max_length=20,
+                                              examples=[[[0.1, 0.6], [0.5, 0.6], [0.5, 1.0], [0.1, 1.0]]])
 
 
 # ----------------------------------------------------------------------------
@@ -166,6 +183,11 @@ class SourceManager:
             "stream_url": f"/api/sources/{source_id}/stream.mjpg",
         }
 
+    def reload_zones(self, camera_key: str | None = None) -> None:
+        for pipe in list(self.pipelines.values()):
+            if camera_key is None or pipe.camera_key == camera_key:
+                pipe.reload_zones()
+
     def stop_all(self) -> None:
         for sid in list(self.pipelines):
             with self._lock:
@@ -208,7 +230,7 @@ def create_app(settings: AppSettings | None = None, initial_sources: list[str] |
                 await asyncio.to_thread(manager.stop_all)
                 db.close()
 
-    app = FastAPI(title="Street Dog Monitoring System", version="0.3.0", lifespan=lifespan)
+    app = FastAPI(title="Street Dog Monitoring System", version="0.4.0", lifespan=lifespan)
     app.state.manager = manager
     app.state.db = db
 
@@ -337,13 +359,21 @@ def create_app(settings: AppSettings | None = None, initial_sources: list[str] |
     def get_settings():
         ps = manager.pipeline_settings
         return {"model": Path(ps.model_path).name, "confidence": ps.confidence, "max_fps": ps.max_fps,
-                "draw_people": ps.draw_people, "draw_trails": ps.draw_trails}
+                "draw_people": ps.draw_people, "draw_trails": ps.draw_trails,
+                "draw_zones": ps.draw_zones, "alert_zone": ps.alerts.zone,
+                "alert_approach": ps.alerts.approach, "alert_pack": ps.alerts.pack,
+                "pack_size": ps.alerts.pack_size}
 
     @app.patch("/api/settings")
     def patch_settings(body: SettingsPatch):
         ps = manager.pipeline_settings
         for key, value in body.model_dump(exclude_none=True).items():
-            setattr(ps, key, value)
+            if key.startswith("alert_"):
+                setattr(ps.alerts, key.removeprefix("alert_"), value)
+            elif key == "pack_size":
+                ps.alerts.pack_size = value
+            else:
+                setattr(ps, key, value)
         return get_settings()
 
     # -- cameras / sources -----------------------------------------------------
@@ -420,6 +450,30 @@ def create_app(settings: AppSettings | None = None, initial_sources: list[str] |
         return StreamingResponse(frames(), media_type="multipart/x-mixed-replace; boundary=frame",
                                  headers={"Cache-Control": "no-store"})
 
+    # -- zones -----------------------------------------------------------------
+
+    @app.get("/api/sources/{source_id}/zones")
+    def list_zones(source_id: str):
+        return db.list_zones(manager.get(source_id).camera_key)
+
+    @app.post("/api/sources/{source_id}/zones", status_code=201)
+    def add_zone(source_id: str, body: AddZone):
+        pipe = manager.get(source_id)
+        if any(not (0 <= x <= 1 and 0 <= y <= 1) for x, y in body.points):
+            raise HTTPException(400, "Zone points must be fractions of the frame (between 0 and 1).")
+        points = [[round(x, 4), round(y, 4)] for x, y in body.points]
+        zone_id = db.add_zone(pipe.camera_key, body.name.strip(), points)
+        manager.reload_zones(pipe.camera_key)
+        return db.get_zone(zone_id)
+
+    @app.delete("/api/zones/{zone_id}", status_code=204)
+    def delete_zone(zone_id: int):
+        zone = db.get_zone(zone_id)
+        if zone is None or not db.delete_zone(zone_id):
+            raise HTTPException(404, f"No zone {zone_id}")
+        manager.reload_zones(zone["camera_key"])
+        return Response(status_code=204)
+
     # -- dogs / events / stats -------------------------------------------------
 
     @app.get("/api/dogs")
@@ -446,6 +500,13 @@ def create_app(settings: AppSettings | None = None, initial_sources: list[str] |
         for e in events:
             e["snapshot_url"] = f"/media/{e['snapshot']}" if e["snapshot"] else None
         return events
+
+    @app.get("/api/alerts")
+    def list_alerts(limit: int = Query(50, le=1000), after_id: int = 0):
+        alerts = db.list_events(limit, after_id=after_id, types=ALERT_TYPES)
+        for a in alerts:
+            a["snapshot_url"] = f"/media/{a['snapshot']}" if a["snapshot"] else None
+        return alerts
 
     @app.get("/api/stats/activity")
     def activity_stats(minutes: float = Query(60, gt=0)):
