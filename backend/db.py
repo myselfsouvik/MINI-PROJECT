@@ -57,7 +57,8 @@ CREATE TABLE IF NOT EXISTS events (
     type      TEXT    NOT NULL,
     dog_id    INTEGER REFERENCES dogs(id) ON DELETE SET NULL,
     message   TEXT    NOT NULL,
-    snapshot  TEXT
+    snapshot  TEXT,
+    clip      TEXT                         -- short video around an alert
 );
 CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts);
 CREATE INDEX IF NOT EXISTS idx_events_type ON events(type, id);
@@ -84,6 +85,10 @@ class Database:
             self._conn.execute("PRAGMA journal_mode=WAL")
             self._conn.execute("PRAGMA foreign_keys=ON")
             self._conn.executescript(SCHEMA)
+            # Databases made before alert clips existed: add the column.
+            cols = {r[1] for r in self._conn.execute("PRAGMA table_info(events)")}
+            if "clip" not in cols:
+                self._conn.execute("ALTER TABLE events ADD COLUMN clip TEXT")
             self._conn.commit()
 
     def close(self) -> None:
@@ -247,6 +252,9 @@ class Database:
             "VALUES (?, ?, ?, ?, ?, ?)",
             (ts or time.time(), source_id, type_, dog_id, message, snapshot),
         )
+
+    def set_event_clip(self, event_id: int, clip: str) -> None:
+        self._write("UPDATE events SET clip = ? WHERE id = ?", (clip, event_id))
 
     def list_events(self, limit: int = 100, type_: str | None = None,
                     after_id: int = 0, types: tuple[str, ...] | None = None) -> list[dict]:

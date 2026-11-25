@@ -188,6 +188,26 @@ async function loadSources() {
     tabs.appendChild(b);
   }
   if (current) {
+    const src = sources.find(s => s.id === current);
+    const recording = src && src.recording && src.recording.active;
+    const rec = document.createElement("button");
+    rec.className = recording ? "ghost" : "tab";
+    rec.textContent = recording ? `■ Stop recording (${src.recording.seconds}s)` : "● Record";
+    rec.title = "Saves the clean camera video to recordings/captures/ (for training clips)";
+    rec.onclick = async () => {
+      try {
+        if (recording) {
+          const r = await api(`/api/sources/${current}/recording`, { method: "DELETE" });
+          $("addError").innerHTML = `<span class="muted">Saved ${esc(r.file)} (${r.seconds}s, ${r.size_mb} MB):
+            <a href="${withToken(r.url)}" download>download</a></span>`;
+          loadVideos();
+        } else {
+          await api(`/api/sources/${current}/recording`, { method: "POST", body: "{}" });
+        }
+      } catch (err) { $("addError").textContent = err.message; }
+      loadSources();
+    };
+    tabs.appendChild(rec);
     const rm = document.createElement("button");
     rm.className = "ghost"; rm.textContent = "Remove";
     rm.onclick = async () => { await api(`/api/sources/${current}`, { method: "DELETE" }); current = null; showStream(); loadSources(); };
@@ -318,7 +338,8 @@ async function loadSide() {
     <figcaption>#${d.id} · ${d.seconds_visible}s</figcaption></figure>`).join("") || '<span class="muted">None yet.</span>';
   $("events").innerHTML = events.map(e => `<li class="${ALERT_TYPES.includes(e.type) ? "alert" : ""}">
     <span class="muted">${fmtTime(e.ts)}</span> ${ALERT_TYPES.includes(e.type) ? "⚠ " : ""}${esc(e.message)}
-    ${e.snapshot_url ? ` <a href="${withToken(e.snapshot_url)}" target="_blank">photo</a>` : ""}</li>`).join("") || '<li class="muted">None yet.</li>';
+    ${e.snapshot_url ? ` <a href="${withToken(e.snapshot_url)}" target="_blank">photo</a>` : ""}
+    ${e.clip_url ? ` <a href="${withToken(e.clip_url)}" target="_blank">clip</a>` : ""}</li>`).join("") || '<li class="muted">None yet.</li>';
   const s = act.seconds, total = s.RESTING + s.WALKING + s.RUNNING;
   $("actBar").innerHTML = total ? ["RESTING","WALKING","RUNNING"].map(a => `<div class="${a}" style="width:${100*s[a]/total}%"></div>`).join("") : "";
   $("actText").textContent = total ? `Resting ${s.RESTING}s · Walking ${s.WALKING}s · Running ${s.RUNNING}s` : "No data yet.";
@@ -418,6 +439,8 @@ async function loadAnalytics() {
 loadSources(); loadSettings(); loadSide(); connectWs(); loadVideos(); loadModels(); loadAnalytics();
 setInterval(loadSide, 5000);
 setInterval(loadAnalytics, 10000);
+// Keep the recording timer on the Record button moving.
+setInterval(() => { const s = sources.find(x => x.id === current); if (s && s.recording && s.recording.active) loadSources(); }, 2000);
 </script>
 </body>
 </html>

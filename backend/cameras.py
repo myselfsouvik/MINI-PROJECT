@@ -170,8 +170,17 @@ class CameraSource:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._finished = False
+        self._listeners: list = []
 
     # -- public API ----------------------------------------------------------
+
+    def add_listener(self, fn) -> None:
+        """Call ``fn(frame, t)`` for every new frame (t = perf_counter seconds). Must be fast."""
+        self._listeners.append(fn)
+
+    def remove_listener(self, fn) -> None:
+        if fn in self._listeners:
+            self._listeners.remove(fn)
 
     def start(self, timeout: float = 10.0) -> "CameraSource":
         """Open the source and start reading. Raises RuntimeError if it can't open."""
@@ -327,6 +336,11 @@ class CameraSource:
             self._frame = frame
             self._frame_id += 1
             self._new_frame.notify_all()
+        for fn in list(self._listeners):
+            try:
+                fn(frame, now)
+            except Exception as e:      # a listener must never stop the camera
+                self.stats.last_error = f"listener: {e}"
 
     def _mark_finished(self) -> None:
         with self._new_frame:
@@ -377,6 +391,7 @@ class PushCameraSource(CameraSource):
         self._thread = None
         self._finished = False
         self._connected = False
+        self._listeners = []
 
     def start(self, timeout: float = 0.0) -> "PushCameraSource":
         self._connected = True
