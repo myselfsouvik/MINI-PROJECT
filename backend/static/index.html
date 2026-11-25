@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DogWatch Test Console</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --text: #1d2330; --muted: #667085; --line: #e3e6ec;
+    --accent: #2563eb; --danger: #dc2626;
+    --resting: #2a8be0; --walking: #3caa3c; --running: #e5482a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #12151b; --panel: #1b2029; --text: #e6e9ef; --muted: #9aa3b2; --line: #2b3240; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+         background: var(--bg); color: var(--text); }
+  header { padding: 14px 20px; border-bottom: 1px solid var(--line); display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+  header h1 { font-size: 18px; margin: 0; }
+  header span { color: var(--muted); }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; padding: 16px 20px; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; padding: 12px 16px; } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin-bottom: 16px; }
+  .panel h2 { font-size: 14px; margin: 0 0 10px; }
+  form { display: flex; gap: 8px; flex-wrap: wrap; }
+  input, select, button { font: inherit; padding: 7px 10px; border-radius: 7px; border: 1px solid var(--line);
+                          background: var(--bg); color: var(--text); }
+  input { flex: 1; min-width: 140px; }
+  button { background: var(--accent); color: #fff; border: 0; cursor: pointer; }
+  button.ghost { background: transparent; color: var(--danger); border: 1px solid var(--line); }
+  .muted { color: var(--muted); }
+  .error { color: var(--danger); }
+  .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .tab { padding: 6px 10px; border-radius: 7px; border: 1px solid var(--line); cursor: pointer; background: var(--bg); color: var(--text); }
+  .tab.on { border-color: var(--accent); color: var(--accent); }
+  .video { width: 100%; background: #000; border-radius: 8px; aspect-ratio: 16 / 9; object-fit: contain; display: block; }
+  .stats { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 8px; color: var(--muted); }
+  .stats b { color: var(--text); }
+  table { width: 100%; border-collapse: collapse; }
+  td, th { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--line); }
+  .pill { padding: 1px 8px; border-radius: 99px; color: #fff; font-size: 12px; }
+  .RESTING { background: var(--resting); } .WALKING { background: var(--walking); } .RUNNING { background: var(--running); }
+  .dogs { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 8px; }
+  .dogs figure { margin: 0; font-size: 12px; }
+  .dogs img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 6px; background: var(--bg); }
+  ul.events { list-style: none; margin: 0; padding: 0; max-height: 300px; overflow: auto; }
+  ul.events li { padding: 4px 0; border-bottom: 1px solid var(--line); }
+  .bar { display: flex; height: 14px; border-radius: 7px; overflow: hidden; background: var(--bg); }
+</style>
+</head>
+<body>
+<header>
+  <h1>🐕 DogWatch: backend test console</h1>
+  <span>Temporary page for checking the API. The real dashboard lives in <code>frontend/</code>. API docs: <a href="/docs">/docs</a></span>
+</header>
+<main>
+  <section>
+    <div class="panel">
+      <h2>Add a camera</h2>
+      <form id="addForm">
+        <input id="srcInput" placeholder="0 · 1 · http://192.168.1.5:8080/video · C:\path\clip.mp4" required>
+        <button>Add</button>
+      </form>
+      <p class="muted" id="localCams" style="margin:8px 0 0">
+        <a href="#" id="scanCams">Scan for webcams</a> (a phone on USB shows up here)
+      </p>
+      <p class="error" id="addError"></p>
+    </div>
+
+    <div class="panel">
+      <div class="tabs" id="tabs"><span class="muted">No cameras yet.</span></div>
+      <img id="video" class="video" alt="Live camera">
+      <div class="stats" id="stats"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Dogs visible now</h2>
+      <table><thead><tr><th>Dog</th><th>Activity</th><th>Speed (box h/s)</th><th>Conf.</th><th>Visible</th></tr></thead>
+      <tbody id="liveDogs"></tbody></table>
+    </div>
+  </section>
+
+  <aside>
+    <div class="panel">
+      <h2>Detection confidence: <span id="confVal"></span></h2>
+      <input type="range" id="conf" min="0.1" max="0.9" step="0.05" style="width:100%">
+    </div>
+    <div class="panel">
+      <h2>Activity, last hour</h2>
+      <div class="bar" id="actBar"></div>
+      <p class="muted" id="actText" style="margin:6px 0 0"></p>
+    </div>
+    <div class="panel">
+      <h2>Dogs seen</h2>
+      <div class="dogs" id="dogs"></div>
+    </div>
+    <div class="panel">
+      <h2>Events</h2>
+      <ul class="events" id="events"></ul>
+    </div>
+  </aside>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+// Devices other than this laptop open the page with ?token=... (printed by the server).
+const TOKEN = new URLSearchParams(location.search).get("token");
+const withToken = (url) => TOKEN ? url + (url.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(TOKEN) : url;
+let current = null;
+let sources = [];
+
+async function api(path, opts = {}) {
+  const headers = { "Content-Type": "application/json" };
+  if (TOKEN) headers["X-Access-Token"] = TOKEN;
+  const r = await fetch(path, { headers, ...opts });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
+  return r.status === 204 ? null : r.json();
+}
+
+function fmtTime(ts) { return new Date(ts * 1000).toLocaleTimeString(); }
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+async function loadSources() {
+  sources = await api("/api/sources");
+  if (!sources.find(s => s.id === current)) current = sources[0]?.id || null;
+  const tabs = $("tabs");
+  tabs.innerHTML = sources.length ? "" : '<span class="muted">No cameras yet.</span>';
+  for (const s of sources) {
+    const b = document.createElement("button");
+    b.className = "tab" + (s.id === current ? " on" : "");
+    b.textContent = `${s.name} (${s.status})`;
+    b.onclick = () => { current = s.id; showStream(); loadSources(); };
+    tabs.appendChild(b);
+  }
+  if (current) {
+    const rm = document.createElement("button");
+    rm.className = "ghost"; rm.textContent = "Remove";
+    rm.onclick = async () => { await api(`/api/sources/${current}`, { method: "DELETE" }); current = null; showStream(); loadSources(); };
+    tabs.appendChild(rm);
+  }
+  showStream();
+}
+
+function showStream() {
+  const want = current ? withToken(`/api/sources/${current}/stream.mjpg`) : "";
+  const img = $("video");
+  if (img.dataset.src !== want) { img.dataset.src = want; img.src = want || ""; }
+}
+
+$("addForm").onsubmit = async (e) => {
+  e.preventDefault();
+  $("addError").textContent = "Opening camera…";
+  try {
+    const s = await api("/api/sources", { method: "POST", body: JSON.stringify({ source: $("srcInput").value }) });
+    current = s.id; $("srcInput").value = ""; $("addError").textContent = "";
+    loadSources();
+  } catch (err) { $("addError").textContent = err.message; }
+};
+
+$("scanCams").onclick = async (e) => {
+  e.preventDefault();
+  $("localCams").textContent = "Scanning…";
+  try {
+    const cams = await api("/api/cameras/local");
+    $("localCams").innerHTML = cams.length
+      ? "Found: " + cams.map(c => `<a href="#" data-i="${c.index}">webcam ${c.index}${c.width ? ` (${c.width}×${c.height})` : ""}${c.in_use ? " – in use" : ""}</a>`).join(" · ")
+      : "No webcams found.";
+    $("localCams").querySelectorAll("a[data-i]").forEach(a => a.onclick = (ev) => { ev.preventDefault(); $("srcInput").value = a.dataset.i; });
+  } catch (err) { $("localCams").textContent = err.message; }
+};
+
+async function loadSettings() {
+  const s = await api("/api/settings");
+  $("conf").value = s.confidence; $("confVal").textContent = s.confidence.toFixed(2);
+}
+$("conf").oninput = () => $("confVal").textContent = Number($("conf").value).toFixed(2);
+$("conf").onchange = () => api("/api/settings", { method: "PATCH", body: JSON.stringify({ confidence: Number($("conf").value) }) });
+
+async function loadSide() {
+  const [dogs, events, act] = await Promise.all([api("/api/dogs?limit=24"), api("/api/events?limit=40"), api("/api/stats/activity")]);
+  $("dogs").innerHTML = dogs.map(d => `<figure>${d.snapshot_url ? `<img src="${withToken(d.snapshot_url + "?t=" + Math.floor(d.last_seen))}" alt="Dog ${d.id}">` : ""}
+    <figcaption>#${d.id} · ${d.seconds_visible}s</figcaption></figure>`).join("") || '<span class="muted">None yet.</span>';
+  $("events").innerHTML = events.map(e => `<li><span class="muted">${fmtTime(e.ts)}</span> ${esc(e.message)}</li>`).join("") || '<li class="muted">None yet.</li>';
+  const s = act.seconds, total = s.RESTING + s.WALKING + s.RUNNING;
+  $("actBar").innerHTML = total ? ["RESTING","WALKING","RUNNING"].map(a => `<div class="${a}" style="width:${100*s[a]/total}%"></div>`).join("") : "";
+  $("actText").textContent = total ? `Resting ${s.RESTING}s · Walking ${s.WALKING}s · Running ${s.RUNNING}s` : "No data yet.";
+}
+
+function connectWs() {
+  const ws = new WebSocket(withToken(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/live`));
+  ws.onmessage = (m) => {
+    const data = JSON.parse(m.data);
+    const live = current && data.sources[current];
+    $("stats").innerHTML = live
+      ? `<span>Status <b>${live.status}</b></span><span>Camera <b>${live.camera_fps}</b> fps</span>
+         <span>Detector <b>${live.inference_fps}</b> fps</span><span>Dogs <b>${live.dogs.length}</b></span>
+         <span>People <b>${live.people}</b></span><span>${live.frame_width}×${live.frame_height}</span>
+         ${live.error ? `<span class="error">${esc(live.error)}</span>` : ""}`
+      : "";
+    $("liveDogs").innerHTML = live && live.dogs.length
+      ? live.dogs.map(d => `<tr><td>#${d.dog_id}</td><td><span class="pill ${d.activity}">${d.activity}</span></td>
+          <td>${d.speed.toFixed(2)}</td><td>${(d.confidence*100).toFixed(0)}%</td><td>${d.seconds_visible}s</td></tr>`).join("")
+      : '<tr><td colspan="5" class="muted">No dogs in view.</td></tr>';
+    if (data.events.length) { loadSide(); loadSources(); }
+  };
+  ws.onclose = () => setTimeout(connectWs, 2000);
+}
+
+loadSources(); loadSettings(); loadSide(); connectWs();
+setInterval(loadSide, 5000);
+</script>
+</body>
+</html>
