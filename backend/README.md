@@ -47,11 +47,19 @@ Runtime data (database + dog snapshots) is written to `backend/storage/` and is 
 | DELETE | `/api/sources/{id}` | stop watching |
 | GET | `/api/sources/{id}/stream.mjpg` | live annotated video. Use as `<img src="…">`; `?raw=1` for the clean frame |
 | GET | `/api/sources/{id}/snapshot.jpg` | one frame |
-| GET | `/api/sources/{id}/live` | dogs visible now: `dog_id, box, activity, speed, confidence, trail` |
+| GET | `/api/sources/{id}/live` | dogs visible now: `dog_id, box, activity, speed, confidence, trail, zones` |
 | GET | `/api/dogs?limit=&source_id=&min_seconds=` | dogs seen, newest first, with `snapshot_url` and seconds per activity |
 | GET | `/api/dogs/{id}` | one dog + all its observations (for charts) |
 | GET | `/api/events?limit=&type=&after_id=` | `source_added`, `dog_appeared`, `dog_left`, … |
 | GET | `/api/stats/activity?minutes=60` | seconds spent RESTING / WALKING / RUNNING |
+| GET | `/api/stats/timeline?minutes=60&bucket=60&source_id=` | `buckets: [{start, RESTING, WALKING, RUNNING}]` dog-seconds per time bucket (stacked chart) |
+| GET | `/api/stats/speeds?minutes=60&bin_width=0.25&max_speed=4&source_id=` | `{edges, counts}` speed histogram; last bin = max_speed and above |
+| GET | `/api/stats/heatmap?minutes=60&cols=16&rows=9&source_id=` | `{grid, max}` dog-seconds per cell over the camera view (row 0 = top) |
+| GET | `/api/stats/summary?minutes=1440` | `{dogs_seen, alerts, events: {type: n}, busiest_hour, activity_seconds}` for dashboard cards |
+| GET | `/api/uploads` | videos in `recordings/`, each with a `source` to pass to `POST /api/sources` |
+| POST | `/api/uploads?filename=clip.mp4&start=1` | body = the video file itself (not a form). `start=1` also starts watching it |
+| GET | `/api/models` | `{current, current_info, available: [{name, size_mb, metrics, current}]}` |
+| POST | `/api/models/select` | body `{name}`: switch every camera to another model from `models/` |
 | GET / PATCH | `/api/settings` | `confidence`, `max_fps`, `draw_people`, `draw_trails`, `draw_zones`, `alert_zone`, `alert_approach`, `alert_pack`, `pack_size` |
 | GET | `/api/sources/{id}/zones` | zones drawn on this camera `[{id, name, points}]` |
 | POST | `/api/sources/{id}/zones` | body `{name, points: [[x, y], …]}`: 3–20 corners as fractions of the frame (0–1) |
@@ -84,8 +92,19 @@ Alerts are saved as events with a photo in `backend/storage/alerts/`. Zones are 
 
 To draw a zone on the test page: pick a camera, press **Draw a zone**, click the corners on the video, name it and save.
 
+## Models
+
+Put weights files (`.pt` or `.onnx`) in `models/` and pick one on the test page or with `POST /api/models/select`. The server reads the class names from the model, so both the stock COCO model (dog = class 16) and our fine-tuned model (only "dog", class 0) work without code changes. Switching model restarts tracking, so dogs on screen get new IDs.
+
+To show test results for a model, save them next to it as `models/<name>.json`, e.g. `models/dog_v1.json`:
+
+```json
+{"mAP50": 0.86, "mAP50-95": 0.61, "precision": 0.9, "recall": 0.82, "test_images": 240}
+```
+
 ## Notes
 
+- Dog positions in `observations` are fractions of the frame (0–1), so heat maps work for any camera resolution.
 - A looping video makes the dog "jump" back to the start, so it gets a new ID each loop. That's expected.
 - Activity thresholds (`REST_BELOW`, `RUN_FROM` in `behaviour.py`) are first guesses; tune them on real footage. The trained behaviour classifier will replace them later.
 

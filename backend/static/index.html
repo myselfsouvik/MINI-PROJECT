@@ -57,6 +57,12 @@
   ul.zones li { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; border-bottom: 1px solid var(--line); }
   ul.events li.alert { color: var(--danger); font-weight: 600; }
   ul.events li.alert a { font-weight: normal; }
+  canvas.heat { width: 100%; aspect-ratio: 16 / 9; border-radius: 6px; background: var(--bg); display: block; }
+  .hist { display: flex; align-items: flex-end; gap: 2px; height: 70px; }
+  .hist div { flex: 1; background: var(--accent); border-radius: 2px 2px 0 0; min-height: 1px; }
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 10px; }
+  .cards div { background: var(--bg); border-radius: 7px; padding: 6px 8px; }
+  .cards b { display: block; font-size: 18px; }
   .bar { display: flex; height: 14px; border-radius: 7px; overflow: hidden; background: var(--bg); }
 </style>
 </head>
@@ -76,6 +82,9 @@
       <p class="muted" id="localCams" style="margin:8px 0 0">
         <a href="#" id="scanCams">Scan for webcams</a> (a phone on USB shows up here)
       </p>
+      <p class="muted" style="margin:8px 0 0">Or upload a video:
+        <input type="file" id="upload" accept="video/*" style="min-width:0;padding:3px"></p>
+      <p class="muted" id="videos" style="margin:6px 0 0"></p>
       <p class="error" id="addError"></p>
     </div>
 
@@ -114,13 +123,24 @@
 
   <aside>
     <div class="panel">
+      <h2>Detector model</h2>
+      <select id="model" style="width:100%"></select>
+      <p class="muted" id="modelInfo" style="margin:6px 0 0"></p>
+    </div>
+    <div class="panel">
       <h2>Detection confidence: <span id="confVal"></span></h2>
       <input type="range" id="conf" min="0.1" max="0.9" step="0.05" style="width:100%">
     </div>
     <div class="panel">
       <h2>Activity, last hour</h2>
+      <div class="cards" id="summary"></div>
       <div class="bar" id="actBar"></div>
-      <p class="muted" id="actText" style="margin:6px 0 0"></p>
+      <p class="muted" id="actText" style="margin:6px 0 10px"></p>
+      <h2>Where dogs spend time (this camera)</h2>
+      <canvas class="heat" id="heat" width="320" height="180"></canvas>
+      <h2 style="margin-top:10px">Speed (box heights / s)</h2>
+      <div class="hist" id="hist"></div>
+      <p class="muted" id="histText" style="margin:4px 0 0"></p>
     </div>
     <div class="panel">
       <h2>Dogs seen</h2>
@@ -322,8 +342,67 @@ function connectWs() {
   ws.onclose = () => setTimeout(connectWs, 2000);
 }
 
-loadSources(); loadSettings(); loadSide(); connectWs();
+// -- uploads ---------------------------------------------------------------------
+async function loadVideos() {
+  const vids = await api("/api/uploads").catch(() => []);
+  $("videos").innerHTML = vids.length ? "Videos: " + vids.slice(0, 6).map((v, i) =>
+    `<a href="#" data-v="${i}">${esc(v.name)}</a> (${v.size_mb} MB)`).join(" · ") : "";
+  $("videos").querySelectorAll("a[data-v]").forEach(a => a.onclick = (e) => {
+    e.preventDefault(); $("srcInput").value = vids[a.dataset.v].source; });
+}
+$("upload").onchange = async () => {
+  const file = $("upload").files[0];
+  if (!file) return;
+  $("addError").textContent = `Uploading ${file.name}…`;
+  try {
+    const headers = TOKEN ? { "X-Access-Token": TOKEN } : {};
+    const r = await fetch(`/api/uploads?start=1&filename=${encodeURIComponent(file.name)}`, { method: "POST", body: file, headers });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || r.statusText);
+    $("addError").textContent = ""; current = data.source_id; loadSources(); loadVideos();
+  } catch (err) { $("addError").textContent = err.message; }
+  $("upload").value = "";
+};
+
+// -- model -----------------------------------------------------------------------
+async function loadModels() {
+  const m = await api("/api/models");
+  $("model").innerHTML = m.available.map(x => `<option ${x.current ? "selected" : ""}>${esc(x.name)}</option>`).join("");
+  const met = m.current_info && m.current_info.metrics;
+  $("modelInfo").textContent = met
+    ? Object.entries(met).filter(([, v]) => typeof v !== "object").slice(0, 4).map(([k, v]) => `${k}: ${v}`).join(" · ")
+    : "No test results saved for this model yet (models/<name>.json).";
+}
+$("model").onchange = async () => {
+  $("modelInfo").textContent = "Loading model…";
+  try { await api("/api/models/select", { method: "POST", body: JSON.stringify({ name: $("model").value }) }); }
+  catch (err) { alert(err.message); }
+  loadModels();
+};
+
+// -- analytics -------------------------------------------------------------------
+async function loadAnalytics() {
+  const q = current ? `&source_id=${current}` : "";
+  const [sum, heat, sp] = await Promise.all([
+    api("/api/stats/summary?minutes=60"), api(`/api/stats/heatmap?minutes=60${q}`), api(`/api/stats/speeds?minutes=60${q}`)]);
+  $("summary").innerHTML = `<div><b>${sum.dogs_seen}</b>dogs</div><div><b>${sum.alerts}</b>alerts</div>
+    <div><b>${sum.busiest_hour ?? "–"}${sum.busiest_hour != null ? ":00" : ""}</b>busiest</div>`;
+  const c = $("heat"), ctx = c.getContext("2d");
+  ctx.clearRect(0, 0, c.width, c.height);
+  const cw = c.width / heat.cols, ch = c.height / heat.rows;
+  heat.grid.forEach((row, y) => row.forEach((n, x) => {
+    if (!n) return;
+    ctx.fillStyle = `rgba(229, 72, 42, ${0.15 + 0.85 * n / heat.max})`;
+    ctx.fillRect(x * cw, y * ch, cw, ch);
+  }));
+  const top = Math.max(1, ...sp.counts);
+  $("hist").innerHTML = sp.counts.map((n, i) => `<div title="${sp.edges[i]}–${sp.edges[i + 1]}: ${n}s" style="height:${100 * n / top}%"></div>`).join("");
+  $("histText").textContent = `0 → ${sp.edges[sp.edges.length - 1]}+ · resting < 0.25 ≤ walking < 1.5 ≤ running`;
+}
+
+loadSources(); loadSettings(); loadSide(); connectWs(); loadVideos(); loadModels(); loadAnalytics();
 setInterval(loadSide, 5000);
+setInterval(loadAnalytics, 10000);
 </script>
 </body>
 </html>
