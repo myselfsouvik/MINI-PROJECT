@@ -5,11 +5,16 @@ import time
 import csv
 import os
 
+# Paths work no matter which folder you run the script from
+from pathlib import Path
+HERE = Path(__file__).resolve().parent
+ROOT = HERE.parent
+
 # ==========================================
 # 1. LOAD YOLO MODEL
 # ==========================================
 
-model = YOLO("yolo11n.pt")
+model = YOLO(str(ROOT / "models" / "yolo11n.pt"))
 
 
 # ==========================================
@@ -44,7 +49,7 @@ start_time = {}
 # 4. CSV FILE
 # ==========================================
 
-csv_file = "dog_features.csv"
+csv_file = str(HERE / "dog_features.csv")
 
 file_exists = os.path.exists(csv_file)
 

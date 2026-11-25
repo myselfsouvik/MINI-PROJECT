@@ -14,37 +14,51 @@ A computer-vision mini project that uses a webcam and **YOLO11** to detect dogs 
 
 ```
 MINI-PROJECT/
-├── detect.py            # Detect dogs and save cropped images
-├── dogid.py             # Detect + track dogs, save images per dog ID
-├── dog_behaviour.py     # Track movement, speed and activity, log to CSV
-├── preprocessing.py     # Clean the animal-bites dataset
-├── yolo11n.pt           # Pre-trained YOLO11-nano weights (COCO)
-├── dog_features.csv     # Sample output from dog_behaviour.py
-├── dog_images/          # Sample cropped dog images
-└── data/tabular/
-    ├── Health_AnimalBites.csv           # Raw dataset (9,003 records)
-    └── cleaned_animal_bites_dogs.csv    # Output of preprocessing.py
+├── backend/             # (in progress) FastAPI server, cameras, inference
+├── frontend/            # (in progress) React dashboard
+├── training/            # (in progress) detector, pose and behaviour training
+├── notebooks/           # (in progress) bites dataset EDA
+├── models/
+│   └── yolo11n.pt       # Pre-trained YOLO11-nano weights (COCO)
+├── legacy/              # Original prototype scripts
+│   ├── detect.py        # Detect dogs and save cropped images
+│   ├── dogid.py         # Detect + track dogs, save images per dog ID
+│   ├── dog_behaviour.py # Track movement, speed and activity, log to CSV
+│   ├── preprocessing.py # Clean the animal-bites dataset
+│   ├── dog_features.csv # Sample output from dog_behaviour.py
+│   └── dog_images/      # Sample cropped dog images
+├── data/tabular/
+│   ├── Health_AnimalBites.csv           # Raw dataset (9,003 records)
+│   └── cleaned_animal_bites_dogs.csv    # Output of preprocessing.py
+├── requirements.txt
+└── PLAN.md              # Roadmap and who does what
 ```
 
-## Requirements
+## Setup
 
-- Python 3.9+
-- A webcam (for the three camera scripts)
+- Python 3.10 – 3.12 (recommended; 3.11 is what we test with)
+- A webcam, or a phone used as a webcam (see PLAN.md)
 
 ```bash
-pip install ultralytics opencv-python pandas scikit-learn
+python -m venv .venv
+# Windows
+.venv\Scripts\activate
+# macOS / Linux
+source .venv/bin/activate
+
+pip install -r requirements.txt
 ```
 
 ## How to run
 
-Run every command from the project folder so the scripts can find `yolo11n.pt` and the data files.
+The scripts find the model and data files themselves, so you can run them from any folder.
 
 | Command | What happens |
 |---|---|
-| `python detect.py` | Opens the camera, boxes any dog (confidence ≥ 60%), saves a crop to `dog_images/` every 3 seconds |
-| `python dogid.py` | Same, but tracks each dog and saves `dog_ID_<id>_<n>.jpg` every 2 seconds per dog |
-| `python dog_behaviour.py` | Shows ID, speed and activity level on screen and appends rows to `dog_features.csv` |
-| `python preprocessing.py` | Cleans the bites dataset and writes `data/tabular/cleaned_animal_bites_dogs.csv` |
+| `python legacy/detect.py` | Opens the camera, boxes any dog (confidence ≥ 60%), saves a crop to `legacy/dog_images/` every 3 seconds |
+| `python legacy/dogid.py` | Same, but tracks each dog and saves `dog_ID_<id>_<n>.jpg` every 2 seconds per dog |
+| `python legacy/dog_behaviour.py` | Shows ID, speed and activity level on screen and appends rows to `legacy/dog_features.csv` |
+| `python legacy/preprocessing.py` | Cleans the bites dataset and writes `data/tabular/cleaned_animal_bites_dogs.csv` |
 
 Press **Q** in the camera window to stop.
 

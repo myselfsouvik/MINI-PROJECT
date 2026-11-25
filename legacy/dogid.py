@@ -95,11 +95,16 @@ import cv2
 import os
 import time
 
+# Paths work no matter which folder you run the script from
+from pathlib import Path
+HERE = Path(__file__).resolve().parent
+ROOT = HERE.parent
+
 # Load YOLO model
-model = YOLO("yolo11n.pt")
+model = YOLO(str(ROOT / "models" / "yolo11n.pt"))
 
 # Folder where dog images will be saved
-save_folder = "dog_images"
+save_folder = str(HERE / "dog_images")
 os.makedirs(save_folder, exist_ok=True)
 
 # Open camera
