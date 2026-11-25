@@ -15,6 +15,10 @@ A computer-vision mini project that uses a webcam and **YOLO11** to detect dogs 
 ```
 MINI-PROJECT/
 ├── backend/             # (in progress) FastAPI server, cameras, inference
+│   ├── cameras.py       # CameraSource: webcam / USB phone / Wi-Fi phone / video file
+│   └── camera_test.py   # command-line camera checker
+├── docs/PHONE_CAMERA.md # how to connect a phone as the camera
+├── tests/               # automated tests (python -m pytest tests)
 ├── frontend/            # (in progress) React dashboard
 ├── training/            # (in progress) detector, pose and behaviour training
 ├── notebooks/           # (in progress) bites dataset EDA
@@ -61,6 +65,23 @@ The scripts find the model and data files themselves, so you can run them from a
 | `python legacy/preprocessing.py` | Cleans the bites dataset and writes `data/tabular/cleaned_animal_bites_dogs.csv` |
 
 Press **Q** in the camera window to stop.
+
+### Testing a camera (laptop, phone over USB or Wi-Fi)
+
+```bash
+python -m backend.camera_test --list                  # which webcams exist (a USB phone shows up here)
+python -m backend.camera_test --source 1 --detect     # phone over USB with dog detection
+python -m backend.camera_test --phone 192.168.1.5     # phone over Wi-Fi (IP Webcam app)
+python -m backend.camera_test --source clip.mp4       # recorded video
+```
+
+Setting up the phone: see [docs/PHONE_CAMERA.md](docs/PHONE_CAMERA.md).
+
+### Running the tests
+
+```bash
+python -m pytest tests -q
+```
 
 ## How it works
 

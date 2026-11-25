@@ -9,3 +9,6 @@ scikit-learn>=1.4
 
 # Tip for laptops without an NVIDIA GPU: install the smaller CPU-only PyTorch first
 #   pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
+# Testing
+pytest>=8.0
