@@ -69,6 +69,8 @@ class PipelineSettings:
     draw_trails: bool = True
     draw_zones: bool = True
     alerts: AlertRules = field(default_factory=AlertRules)   # shared by all cameras
+    behaviour_model: object | None = None    # backend.features.BehaviourModel, if trained
+    use_behaviour_model: bool = True
 
 
 @dataclass
@@ -231,6 +233,8 @@ class Pipeline:
         h, w = frame.shape[:2]
         dogs_live, people = [], 0
         person_boxes, dog_views = [], []
+        s = self.settings
+        self.behaviour.classifier = s.behaviour_model if s.use_behaviour_model else None
 
         boxes = result.boxes
         if boxes is not None and len(boxes):
@@ -393,7 +397,7 @@ class Pipeline:
             pts = np.array(state.trail, np.int32).reshape(-1, 1, 2)
             cv2.polylines(img, [pts], False, colour, 2, cv2.LINE_AA)
         cv2.rectangle(img, (x1, y1), (x2, y2), colour, 2)
-        label = f"Dog #{rec.db_id}  {state.activity}  {state.speed:.2f}"
+        label = f"Dog #{rec.db_id}  {state.label or state.activity}  {state.speed:.2f}"
         (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 1)
         ty = max(th + 6, y1)
         cv2.rectangle(img, (x1, ty - th - 6), (x1 + tw + 6, ty), colour, -1)
@@ -417,6 +421,8 @@ class Pipeline:
             "track_id": state.track_id,
             "box": [x1, y1, x2, y2],
             "activity": state.activity,
+            "behaviour": state.label,                 # classifier label, None without a model
+            "behaviour_conf": round(state.label_conf, 3) if state.label else None,
             "speed": round(state.speed, 3),
             "confidence": round(state.confidence, 3),
             "seconds_visible": round(state.duration, 1),
