@@ -2,7 +2,11 @@
 FastAPI web server for the Street Dog Monitoring System.
 
 Start it with:  python -m backend.server --source 0
-Then open http://127.0.0.1:8000 (test page) or http://127.0.0.1:8000/docs (API docs).
+Then open http://127.0.0.1:8000 (dashboard) or http://127.0.0.1:8000/docs (API docs).
+
+Pages: "/" is the React dashboard once it's built (frontend/dist), otherwise
+the test console. The test console is always at /console, the phone camera
+page at /phone.
 
 Main endpoints (all JSON unless noted)
 
@@ -85,11 +89,17 @@ class AppSettings:
     phone_port: int | None = None
     # Models that can be picked from the dashboard (weights files in this folder).
     models_dir: str = str(ROOT / "models")
+    # The built React dashboard (npm run build). Served at "/" when it exists.
+    frontend_dir: str = str(ROOT / "frontend" / "dist")
     # Trained behaviour classifier; used if the file exists (see training/behaviour).
     behaviour_model_path: str = str(ROOT / "models" / "behaviour.joblib")
 
 
-PUBLIC_PAGES = {"/", "/phone"}   # pages with no data in them; the API still needs the token
+PUBLIC_PAGES = {"/", "/phone", "/console"}   # pages with no data in them; the API still needs the token
+# Paths that hold data. With a built dashboard, everything else is its static
+# files (JS/CSS/images), which other devices must be able to load before they
+# can send the token with their API requests.
+PROTECTED_PREFIXES = ("/api", "/ws", "/media", "/docs", "/redoc", "/openapi.json")
 MAX_PHONES = 4
 VIDEO_TYPES = {".mp4", ".avi", ".mov", ".mkv", ".webm", ".m4v"}
 MODEL_TYPES = {".pt", ".onnx"}
@@ -268,14 +278,23 @@ def create_app(settings: AppSettings | None = None, initial_sources: list[str] |
 
     @app.middleware("http")
     async def access_control(request: Request, call_next):
-        # The two pages hold no data; everything else needs access.
-        if request.url.path not in PUBLIC_PAGES:
+        if not is_public(request.url.path):
             client = request.client.host if request.client else None
             if not is_local_client(client):
                 given = request.headers.get("x-access-token") or request.query_params.get("token")
                 if not token_ok(settings.access_token, given):
                     return JSONResponse({"detail": "Access token required"}, status_code=401)
         return await call_next(request)
+
+    frontend = Path(settings.frontend_dir).resolve()
+
+    def frontend_built() -> bool:
+        return (frontend / "index.html").is_file()
+
+    def is_public(path: str) -> bool:
+        if path in PUBLIC_PAGES:
+            return True
+        return frontend_built() and not path.startswith(PROTECTED_PREFIXES)
 
     def validate_source(source: str, request: Request) -> None:
         client = request.client.host if request.client else None
@@ -288,6 +307,12 @@ def create_app(settings: AppSettings | None = None, initial_sources: list[str] |
 
     @app.get("/", include_in_schema=False)
     def index():
+        if frontend_built():
+            return FileResponse(frontend / "index.html", headers={"Cache-Control": "no-store"})
+        return FileResponse(STATIC_DIR / "index.html")
+
+    @app.get("/console", include_in_schema=False)
+    def console():
         return FileResponse(STATIC_DIR / "index.html")
 
     @app.get("/phone", include_in_schema=False)
@@ -730,5 +755,19 @@ def create_app(settings: AppSettings | None = None, initial_sources: list[str] |
                 await asyncio.sleep(0.5)
         except (WebSocketDisconnect, RuntimeError):
             pass
+
+    # -- React dashboard files (must stay the last route) ------------------------
+
+    @app.get("/{path:path}", include_in_schema=False)
+    def dashboard_files(path: str):
+        """Files of the built dashboard; any other page path gets index.html (client-side routing)."""
+        if not frontend_built() or f"/{path}".startswith(PROTECTED_PREFIXES):
+            raise HTTPException(404, "Not found")
+        target = (frontend / path).resolve()
+        if target.is_relative_to(frontend) and target.is_file():
+            return FileResponse(target)
+        if "." in Path(path).name:          # a missing file like /assets/x.js: real 404
+            raise HTTPException(404, "Not found")
+        return FileResponse(frontend / "index.html", headers={"Cache-Control": "no-store"})
 
     return app
