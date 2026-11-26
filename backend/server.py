@@ -42,6 +42,8 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--phone-host", default="0.0.0.0",
                    help="address the phone server listens on (default 0.0.0.0 = the Wi-Fi network)")
     p.add_argument("--model", default=AppSettings.model_path, help="YOLO weights file")
+    p.add_argument("--behaviour-model", default=AppSettings.behaviour_model_path,
+                   help="trained behaviour classifier (.joblib); used only if the file exists")
     p.add_argument("--conf", type=float, default=0.5, help="detection confidence (default 0.5)")
     p.add_argument("--max-fps", type=float, default=0.0, help="limit detector FPS to save CPU (0 = no limit)")
     p.add_argument("--media-dir", default=AppSettings.media_dir,
@@ -51,7 +53,7 @@ def main(argv: list[str] | None = None) -> None:
 
     reachable_from_network = args.phone or not is_local_client(args.host)
     token = args.token or (new_token() if reachable_from_network else None)
-    settings = AppSettings(model_path=args.model, confidence=args.conf, max_fps=args.max_fps,
+    settings = AppSettings(model_path=args.model, behaviour_model_path=args.behaviour_model, confidence=args.conf, max_fps=args.max_fps,
                            media_dir=args.media_dir, access_token=token,
                            phone_port=args.phone_port if args.phone else None)
     Path(args.media_dir).mkdir(parents=True, exist_ok=True)
@@ -59,6 +61,10 @@ def main(argv: list[str] | None = None) -> None:
 
     configs = [uvicorn.Config(app, host=args.host, port=args.port, log_level="warning")]
     print(f"\n  Dashboard: http://127.0.0.1:{args.port}    API docs: http://127.0.0.1:{args.port}/docs")
+    if Path(args.behaviour_model).is_file():
+        print(f"  Behaviour: trained classifier {Path(args.behaviour_model).name}")
+    else:
+        print("  Behaviour: speed thresholds (no models/behaviour.joblib yet, see training/behaviour)")
 
     if args.phone:
         from backend.phone import ensure_certificate, lan_ips

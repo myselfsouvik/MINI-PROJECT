@@ -20,13 +20,14 @@ MINI-PROJECT/
 │   ├── pipeline.py      # detection + tracking + behaviour per camera
 │   ├── behaviour.py     # speed and RESTING / WALKING / RUNNING labels
 │   ├── alerts.py        # zone, running-at-person and pack alerts
+│   ├── features.py      # movement features + trained behaviour classifier
 │   ├── db.py            # SQLite storage
 │   ├── cameras.py       # CameraSource: webcam / USB phone / Wi-Fi phone / video file
 │   └── camera_test.py   # command-line camera checker
 ├── docs/PHONE_CAMERA.md # how to connect a phone as the camera
 ├── tests/               # automated tests (python -m pytest tests)
 ├── frontend/            # (in progress) React dashboard
-├── training/            # (in progress) detector, pose and behaviour training
+├── training/            # detector, pose and behaviour training (behaviour/: clips → features → classifier)
 ├── notebooks/           # (in progress) bites dataset EDA
 ├── models/
 │   └── yolo11n.pt       # Pre-trained YOLO11-nano weights (COCO)

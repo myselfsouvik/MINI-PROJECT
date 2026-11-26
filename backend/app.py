@@ -29,6 +29,7 @@ Main endpoints (all JSON unless noted)
     GET    /api/stats/summary                 dogs seen, events by type, busiest hour
     GET    /api/uploads  POST /api/uploads    videos in the media folder / upload one
     GET    /api/models   POST /api/models/select   which model is loaded, switch model
+    POST   /api/models/behaviour/reload       load a newly trained behaviour classifier
     GET    /api/settings  PATCH /api/settings detection confidence etc.
     WS     /ws/live                           pushes live status + new events twice a second
     GET    /api/phone-link                    link + QR code for phones (server started with --phone)
@@ -62,6 +63,7 @@ from backend.alerts import ALERT_TYPES
 from backend.cameras import PHONE_APPS, CameraSource, PushCameraSource, list_local_cameras, phone_url
 from backend.phone import lan_ips, qr_svg
 from backend.db import Database
+from backend.features import BehaviourModel
 from backend.pipeline import Pipeline, PipelineSettings, class_ids
 from backend.security import check_source, is_local_client, token_ok
 
@@ -83,6 +85,8 @@ class AppSettings:
     phone_port: int | None = None
     # Models that can be picked from the dashboard (weights files in this folder).
     models_dir: str = str(ROOT / "models")
+    # Trained behaviour classifier; used if the file exists (see training/behaviour).
+    behaviour_model_path: str = str(ROOT / "models" / "behaviour.joblib")
 
 
 PUBLIC_PAGES = {"/", "/phone"}   # pages with no data in them; the API still needs the token
@@ -119,6 +123,7 @@ class SettingsPatch(BaseModel):
     alert_approach: bool | None = None
     alert_pack: bool | None = None
     pack_size: int | None = Field(None, ge=2, le=20)
+    use_behaviour_model: bool | None = None
 
 
 class SelectModel(BaseModel):
@@ -142,7 +147,8 @@ class SourceManager:
         self.db = db
         self.storage = Path(settings.storage_dir)
         self.pipeline_settings = PipelineSettings(
-            model_path=settings.model_path, confidence=settings.confidence, max_fps=settings.max_fps)
+            model_path=settings.model_path, confidence=settings.confidence, max_fps=settings.max_fps,
+            behaviour_model=BehaviourModel.load_if_exists(settings.behaviour_model_path))
         self.pipelines: dict[str, Pipeline] = {}
         self._ids = itertools.count(1)
         self._lock = threading.Lock()
@@ -247,7 +253,7 @@ def create_app(settings: AppSettings | None = None, initial_sources: list[str] |
                 await asyncio.to_thread(manager.stop_all)
                 db.close()
 
-    app = FastAPI(title="Street Dog Monitoring System", version="0.5.0", lifespan=lifespan)
+    app = FastAPI(title="Street Dog Monitoring System", version="0.6.0", lifespan=lifespan)
     app.state.manager = manager
     app.state.db = db
 
@@ -379,7 +385,9 @@ def create_app(settings: AppSettings | None = None, initial_sources: list[str] |
                 "draw_people": ps.draw_people, "draw_trails": ps.draw_trails,
                 "draw_zones": ps.draw_zones, "alert_zone": ps.alerts.zone,
                 "alert_approach": ps.alerts.approach, "alert_pack": ps.alerts.pack,
-                "pack_size": ps.alerts.pack_size}
+                "pack_size": ps.alerts.pack_size,
+                "use_behaviour_model": ps.use_behaviour_model,
+                "behaviour_model_loaded": ps.behaviour_model is not None}
 
     @app.patch("/api/settings")
     def patch_settings(body: SettingsPatch):
@@ -648,7 +656,36 @@ def create_app(settings: AppSettings | None = None, initial_sources: list[str] |
             "current": current.name,
             "current_info": model_info(current) if current.exists() else None,
             "available": [model_info(f) | {"current": f.resolve() == current.resolve()} for f in files],
+            "behaviour": behaviour_info(),
         }
+
+    def behaviour_info() -> dict:
+        path = Path(settings.behaviour_model_path)
+        model = manager.pipeline_settings.behaviour_model
+        info = {"loaded": model is not None, "file": path.name, "exists": path.is_file(),
+                "in_use": model is not None and manager.pipeline_settings.use_behaviour_model,
+                "labels": model.labels if model else None, "metrics": None}
+        meta = path.with_suffix(".json")
+        if meta.exists():
+            try:
+                info["metrics"] = json.loads(meta.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                pass
+        return info
+
+    @app.post("/api/models/behaviour/reload")
+    def reload_behaviour_model():
+        """Load models/behaviour.joblib again, e.g. right after training a new one."""
+        path = Path(settings.behaviour_model_path)
+        if not path.is_file():
+            manager.pipeline_settings.behaviour_model = None
+            raise HTTPException(404, f"No {path.name} in models/ yet. Train one first (training/behaviour).")
+        try:
+            manager.pipeline_settings.behaviour_model = BehaviourModel(path)
+        except Exception as e:
+            raise HTTPException(400, f"Can't load {path.name}: {e}")
+        db.add_event("system", "model_changed", f"Loaded behaviour classifier {path.name}")
+        return behaviour_info()
 
     @app.post("/api/models/select")
     def select_model(body: SelectModel):

@@ -126,6 +126,9 @@
       <h2>Detector model</h2>
       <select id="model" style="width:100%"></select>
       <p class="muted" id="modelInfo" style="margin:6px 0 0"></p>
+      <label style="display:block;margin-top:8px"><input type="checkbox" id="useBeh" style="min-width:0;flex:none">
+        Behaviour classifier</label>
+      <p class="muted" id="behInfo" style="margin:4px 0 0"></p>
     </div>
     <div class="panel">
       <h2>Detection confidence: <span id="confVal"></span></h2>
@@ -333,7 +336,9 @@ function connectWs() {
          ${live.error ? `<span class="error">${esc(live.error)}</span>` : ""}`
       : "";
     $("liveDogs").innerHTML = live && live.dogs.length
-      ? live.dogs.map(d => `<tr><td>#${d.dog_id}</td><td><span class="pill ${d.activity}">${d.activity}</span></td>
+      ? live.dogs.map(d => `<tr><td>#${d.dog_id}</td><td><span class="pill ${d.activity}">${d.activity}</span>
+          ${d.behaviour && d.behaviour !== d.activity ? `<span class="muted">${esc(d.behaviour)}</span>` : ""}
+          ${d.behaviour_conf ? `<span class="muted">${Math.round(d.behaviour_conf * 100)}%</span>` : ""}</td>
           <td>${d.speed.toFixed(2)}</td><td>${(d.confidence*100).toFixed(0)}%</td><td>${d.seconds_visible}s</td>
           <td>${esc((d.zones || []).join(", ") || "–")}</td></tr>`).join("")
       : '<tr><td colspan="6" class="muted">No dogs in view.</td></tr>';
@@ -372,7 +377,17 @@ async function loadModels() {
   $("modelInfo").textContent = met
     ? Object.entries(met).filter(([, v]) => typeof v !== "object").slice(0, 4).map(([k, v]) => `${k}: ${v}`).join(" · ")
     : "No test results saved for this model yet (models/<name>.json).";
+  const b = m.behaviour;
+  $("useBeh").disabled = !b.loaded;
+  $("useBeh").checked = b.in_use;
+  $("behInfo").textContent = !b.loaded
+    ? "Not trained yet: using speed thresholds. See training/behaviour."
+    : `${b.labels.join(" / ")}` + (b.metrics ? ` · accuracy ${b.metrics.accuracy} · macro F1 ${b.metrics.macro_f1}` : "");
 }
+$("useBeh").onchange = async () => {
+  await api("/api/settings", { method: "PATCH", body: JSON.stringify({ use_behaviour_model: $("useBeh").checked }) });
+  loadModels();
+};
 $("model").onchange = async () => {
   $("modelInfo").textContent = "Loading model…";
   try { await api("/api/models/select", { method: "POST", body: JSON.stringify({ name: $("model").value }) }); }
