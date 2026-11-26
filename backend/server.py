@@ -54,6 +54,8 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--demo", action="store_true",
                    help="also watch the backup demo video (made if missing) with a demo zone")
     p.add_argument("--open", action="store_true", help="open the dashboard in the browser")
+    p.add_argument("--keep-days", type=float, default=None,
+                   help="auto-delete dogs, events, photos and clips older than this many days (default: keep all)")
     args = p.parse_args(argv)
 
     if args.demo:
@@ -63,11 +65,13 @@ def main(argv: list[str] | None = None) -> None:
         if str(demo_video) not in args.source:
             args.source.append(str(demo_video))
 
+    if args.keep_days is not None and args.keep_days < 1 / 24:
+        p.error("--keep-days must be at least 0.042 (one hour)")
     reachable_from_network = args.phone or not is_local_client(args.host)
     token = args.token or (new_token() if reachable_from_network else None)
     settings = AppSettings(model_path=args.model, behaviour_model_path=args.behaviour_model, confidence=args.conf, max_fps=args.max_fps,
                            media_dir=args.media_dir, access_token=token,
-                           phone_port=args.phone_port if args.phone else None)
+                           phone_port=args.phone_port if args.phone else None, keep_days=args.keep_days)
     Path(args.media_dir).mkdir(parents=True, exist_ok=True)
     app = create_app(settings, initial_sources=args.source)
     if args.demo:

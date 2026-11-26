@@ -19,6 +19,7 @@ from fastapi.testclient import TestClient
 from backend.app import AppSettings, create_app
 from backend.cameras import PushCameraSource
 from backend.phone import ensure_certificate, qr_svg
+from tests.test_api import wait_for
 
 ROOT = Path(__file__).resolve().parent.parent
 DOG_IMAGE = ROOT / "legacy" / "dog_images" / "dog_ID_5_002.jpg"
@@ -150,15 +151,11 @@ def test_phone_streams_frames_and_dog_is_detected(tmp_path):
             snap = c.get(f"/api/sources/{sid}/snapshot.jpg")
             assert snap.status_code == 200
 
-        # Phone disconnected: its source is removed and the event logged
-        removed = False
-        for _ in range(50):
-            types = [e["type"] for e in c.get("/api/events").json()]
-            if not c.get("/api/sources").json() and "source_removed" in types:
-                removed = True
-                break
-            time.sleep(0.1)
-        assert removed, "phone source not removed after disconnect"
+        # Phone disconnected: its source disappears at once; the event is logged once the
+        # detector thread has stopped (up to 5 s on a busy laptop), so allow time for that.
+        assert wait_for(lambda: not c.get("/api/sources").json(), timeout=5), "phone source still listed"
+        assert wait_for(lambda: "source_removed" in [e["type"] for e in c.get("/api/events").json()],
+                        timeout=20), "phone source not removed after disconnect"
 
 
 def test_phone_limit(tmp_path, monkeypatch):
