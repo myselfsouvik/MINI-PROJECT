@@ -64,6 +64,9 @@
   .cards div { background: var(--bg); border-radius: 7px; padding: 6px 8px; }
   .cards b { display: block; font-size: 18px; }
   .bar { display: flex; height: 14px; border-radius: 7px; overflow: hidden; background: var(--bg); }
+  .hbars { display: grid; grid-template-columns: max-content 1fr max-content; gap: 3px 8px; align-items: center; font-size: 12px; margin-bottom: 4px; }
+  .hbars i { display: block; height: 10px; background: var(--accent); border-radius: 0 3px 3px 0; min-width: 1px; }
+  details summary { cursor: pointer; font-weight: 600; margin: 8px 0 4px; }
 </style>
 </head>
 <body>
@@ -144,6 +147,12 @@
       <h2 style="margin-top:10px">Speed (box heights / s)</h2>
       <div class="hist" id="hist"></div>
       <p class="muted" id="histText" style="margin:4px 0 0"></p>
+    </div>
+    <div class="panel">
+      <h2>Insights: animal-bites dataset</h2>
+      <div class="cards" id="insCards"></div>
+      <div id="insCharts"></div>
+      <p class="muted" id="insSource" style="margin:6px 0 0"></p>
     </div>
     <div class="panel">
       <h2>Dogs seen</h2>
@@ -436,7 +445,27 @@ async function loadAnalytics() {
   $("histText").textContent = `0 → ${sp.edges[sp.edges.length - 1]}+ · resting < 0.25 ≤ walking < 1.5 ≤ running`;
 }
 
-loadSources(); loadSettings(); loadSide(); connectWs(); loadVideos(); loadModels(); loadAnalytics();
+// -- insights (bites dataset) --------------------------------------------------------
+function hbars(chart) {
+  const top = Math.max(1, ...chart.values);
+  return `<div class="hbars">${chart.labels.map((l, i) => `<span>${esc(l)}</span>
+    <i style="width:${100 * chart.values[i] / top}%"></i><span>${chart.values[i]}</span>`).join("")}</div>
+    ${chart.note ? `<p class="muted" style="margin:0 0 6px">${esc(chart.note)}</p>` : ""}`;
+}
+async function loadInsights() {
+  try {
+    const ins = await api("/api/insights");
+    const s = ins.summary;
+    $("insCards").innerHTML = `<div><b>${s.dog_records.toLocaleString()}</b>dog bites</div>
+      <div><b>${Math.round(100 * s.head_bite_share)}%</b>on the head</div><div><b>${s.busiest_month}</b>busiest month</div>`;
+    const shown = ["by_month", "breeds", "body_part", "by_weekday", "vaccination", "rabies_result"];
+    $("insCharts").innerHTML = shown.map((k, i) => `<details ${i < 2 ? "open" : ""}>
+      <summary>${esc(ins.charts[k].title)}</summary>${hbars(ins.charts[k])}</details>`).join("");
+    $("insSource").textContent = `${s.source}, ${s.years[0]}–${s.years[1]}, ${s.records.toLocaleString()} reports.`;
+  } catch (err) { $("insCharts").textContent = err.message; }
+}
+
+loadSources(); loadSettings(); loadSide(); connectWs(); loadVideos(); loadModels(); loadAnalytics(); loadInsights();
 setInterval(loadSide, 5000);
 setInterval(loadAnalytics, 10000);
 // Keep the recording timer on the Record button moving.

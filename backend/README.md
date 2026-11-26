@@ -27,6 +27,7 @@ Options: `--phone` (HTTPS server on port 8443 for phones, see [docs/PHONE_CAMERA
 | `cameras.py` | `CameraSource`: webcam / USB phone / Wi-Fi phone / video file, always returns the newest frame, auto-reconnects |
 | `behaviour.py` | Per-dog speed in **box heights per second** (independent of distance and resolution) and RESTING / WALKING / RUNNING labels |
 | `pipeline.py` | One thread per camera: YOLO detect + ByteTrack → behaviour → alerts → database, draws the annotated frame |
+| `insights.py` | Charts for the Insights page from the animal-bites dataset (cleans dates and breed spellings, cached) |
 | `features.py` | Movement features for the behaviour classifier, and loading `models/behaviour.joblib` |
 | `alerts.py` | Alert rules: dog enters a zone, running dog closing in on a person, 3+ dogs together |
 | `db.py` | SQLite tables `dogs`, `observations` (1 per dog per second), `events` (with `snapshot` and `clip`), `zones` |
@@ -64,6 +65,7 @@ Runtime data (database + dog snapshots) is written to `backend/storage/` and is 
 | GET | `/api/stats/speeds?minutes=60&bin_width=0.25&max_speed=4&source_id=` | `{edges, counts}` speed histogram; last bin = max_speed and above |
 | GET | `/api/stats/heatmap?minutes=60&cols=16&rows=9&source_id=` | `{grid, max}` dog-seconds per cell over the camera view (row 0 = top) |
 | GET | `/api/stats/summary?minutes=1440` | `{dogs_seen, alerts, events: {type: n}, busiest_hour, activity_seconds}` for dashboard cards |
+| GET | `/api/insights` | animal-bites dataset: `summary` (records, dog share, head-bite share, busiest month, rabies tests…) and `charts`: `species`, `by_year`, `by_month`, `by_weekday`, `breeds`, `body_part`, `gender`, `vaccination`, `rabies_result`, `outcome`, each `{title, labels, values, note}` ready for Chart.js |
 | GET | `/api/uploads` | videos in `recordings/` (uploads and recordings), each with `source` (for `POST /api/sources`) and `url` (download / play) |
 | GET | `/api/uploads/{path}` | the video file itself |
 | POST | `/api/sources/{id}/recording` | start recording; body `{annotated?: false, max_minutes?: 10, fps?: 15}`. `409` if already recording |
