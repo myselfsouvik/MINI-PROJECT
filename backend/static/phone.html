@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#111418">
+<title>DogWatch Phone Camera</title>
+<style>
+  :root {
+    --bg: #111418; --panel: #1b2029; --text: #eef1f5; --muted: #9aa3b2; --line: #2b3240;
+    --accent: #2f7cf6; --ok: #34b36a; --warn: #e5a32a; --danger: #e5482a;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+               font: 16px/1.4 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  body { display: flex; flex-direction: column; padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
+  header { padding: 12px 16px; display: flex; align-items: center; gap: 10px; }
+  header h1 { font-size: 17px; margin: 0; flex: 1; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); flex: none; }
+  .dot.live { background: var(--ok); box-shadow: 0 0 0 4px rgba(52,179,106,.25); }
+  .dot.wait { background: var(--warn); }
+  .dot.err { background: var(--danger); }
+  .stage { position: relative; flex: 1; min-height: 0; background: #000; }
+  video { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .badge { position: absolute; left: 12px; right: 12px; bottom: 12px; padding: 10px 12px; border-radius: 10px;
+           background: rgba(0,0,0,.6); backdrop-filter: blur(6px); font-size: 15px; }
+  .badge b { font-size: 18px; }
+  .controls { padding: 12px 16px 16px; display: grid; gap: 10px; }
+  .row { display: flex; gap: 10px; }
+  input { flex: 1; min-width: 0; font: inherit; padding: 12px; border-radius: 10px; border: 1px solid var(--line);
+          background: var(--panel); color: var(--text); }
+  button { font: inherit; font-weight: 600; padding: 12px 16px; border-radius: 10px; border: 0; cursor: pointer;
+           background: var(--accent); color: #fff; }
+  button.secondary { background: var(--panel); color: var(--text); border: 1px solid var(--line); }
+  button.stop { background: var(--danger); }
+  button:disabled { opacity: .5; }
+  .msg { color: var(--muted); font-size: 14px; margin: 0; }
+  .msg.err { color: #ff8a73; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <span class="dot" id="dot"></span>
+  <h1>DogWatch phone camera</h1>
+  <span class="msg" id="fps"></span>
+</header>
+
+<div class="stage">
+  <video id="video" playsinline muted autoplay></video>
+  <div class="badge hidden" id="badge"></div>
+</div>
+
+<div class="controls">
+  <div class="row" id="setupRow">
+    <input id="name" maxlength="40" placeholder="Camera name, e.g. Gate phone" aria-label="Camera name">
+  </div>
+  <div class="row">
+    <button id="startBtn" style="flex:1">Start camera</button>
+    <button id="flipBtn" class="secondary hidden" aria-label="Switch camera">↺ Flip</button>
+  </div>
+  <p class="msg" id="msg">Point the back camera at the street. Keep this page open; the laptop shows the detections.</p>
+</div>
+
+<canvas id="canvas" class="hidden"></canvas>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+const TOKEN = params.get("token");
+
+const MAX_WIDTH = 640;     // frames are scaled down to this width before sending
+const JPEG_QUALITY = 0.7;
+const MAX_FPS = 12;
+
+let stream = null, ws = null, facing = "environment", running = false;
+let waitingAck = false, lastSend = 0, sentTimes = [], wakeLock = null, retry = 0;
+
+function setStatus(state, text, isError = false) {
+  $("dot").className = "dot " + state;
+  $("msg").textContent = text;
+  $("msg").classList.toggle("err", isError);
+}
+
+function preflight() {
+  if (!window.isSecureContext) {
+    setStatus("err", "This page must be opened with https:// for the camera to work. Scan the QR code on the laptop again.", true);
+    return false;
+  }
+  if (!navigator.mediaDevices?.getUserMedia) {
+    setStatus("err", "This browser can't use the camera. Try Chrome (Android) or Safari (iPhone).", true);
+    return false;
+  }
+  return true;
+}
+
+async function openCamera() {
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  stream = await navigator.mediaDevices.getUserMedia({
+    video: { facingMode: { ideal: facing }, width: { ideal: 1280 }, height: { ideal: 720 } },
+    audio: false,
+  });
+  $("video").srcObject = stream;
+  await $("video").play().catch(() => {});
+}
+
+function wsUrl() {
+  const q = new URLSearchParams();
+  if (TOKEN) q.set("token", TOKEN);
+  const name = $("name").value.trim();
+  if (name) q.set("name", name);
+  return `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/phone?${q}`;
+}
+
+function connect() {
+  setStatus("wait", "Connecting to the laptop…");
+  ws = new WebSocket(wsUrl());
+  ws.binaryType = "arraybuffer";
+  ws.onmessage = (m) => {
+    const data = JSON.parse(m.data);
+    if (data.type === "ready") {
+      retry = 0;
+      setStatus("live", `Connected as "${data.name}". The laptop is analysing this camera.`);
+      waitingAck = false;
+      scheduleSend();
+    } else if (data.type === "ack") {
+      waitingAck = false;
+      showDetections(data);
+      scheduleSend();
+    } else if (data.type === "error") {
+      setStatus("err", data.message, true);
+      stop(false);
+    }
+  };
+  ws.onclose = (e) => {
+    if (!running) return;
+    if (e.code === 1008) { setStatus("err", "The laptop refused the connection (wrong or missing access token). Scan the QR code again.", true); stop(false); return; }
+    retry = Math.min(retry + 1, 5);
+    setStatus("wait", `Connection lost. Reconnecting in ${retry * 2}s…`);
+    setTimeout(() => running && connect(), retry * 2000);
+  };
+}
+
+function showDetections(d) {
+  const b = $("badge");
+  b.classList.remove("hidden");
+  if (!d.dogs.length) { b.innerHTML = `No dogs in view${d.people ? ` · ${d.people} people` : ""}`; return; }
+  const acts = d.dogs.map(x => `#${x.dog_id} ${x.activity.toLowerCase()}`).join(", ");
+  b.innerHTML = `<b>${d.dogs.length} dog${d.dogs.length > 1 ? "s" : ""}</b> · ${acts}`;
+}
+
+// Send one frame, then wait for the laptop's reply (ack) before the next one.
+// Driven by the replies rather than by animation frames, so no backlog builds
+// up on slow Wi-Fi and the rate never exceeds MAX_FPS.
+let sendTimer = null;
+function scheduleSend() {
+  clearTimeout(sendTimer);
+  const wait = Math.max(0, 1000 / MAX_FPS - (performance.now() - lastSend));
+  sendTimer = setTimeout(sendFrame, wait);
+}
+
+function sendFrame() {
+  if (!running || !ws || ws.readyState !== WebSocket.OPEN || waitingAck) return;
+  const video = $("video");
+  if (!video.videoWidth) { sendTimer = setTimeout(sendFrame, 100); return; }   // camera warming up
+  const scale = Math.min(1, MAX_WIDTH / video.videoWidth);
+  const c = $("canvas");
+  c.width = Math.round(video.videoWidth * scale);
+  c.height = Math.round(video.videoHeight * scale);
+  c.getContext("2d").drawImage(video, 0, 0, c.width, c.height);
+  waitingAck = true;
+  lastSend = performance.now();
+  c.toBlob(async (blob) => {
+    if (!blob || !ws || ws.readyState !== WebSocket.OPEN) { waitingAck = false; scheduleSend(); return; }
+    ws.send(await blob.arrayBuffer());
+    sentTimes.push(performance.now());
+    sentTimes = sentTimes.filter(t => performance.now() - t < 2000);
+    $("fps").textContent = `${(sentTimes.length / 2).toFixed(0)} fps`;
+  }, "image/jpeg", JPEG_QUALITY);
+}
+
+async function keepScreenOn() {
+  try {
+    wakeLock = await navigator.wakeLock?.request("screen");
+    wakeLock?.addEventListener("release", () => { wakeLock = null; });
+  } catch {}
+}
+
+async function start() {
+  if (!preflight()) return;
+  $("startBtn").disabled = true;
+  try {
+    await openCamera();
+  } catch (e) {
+    $("startBtn").disabled = false;
+    const denied = e.name === "NotAllowedError";
+    setStatus("err", denied ? "Camera permission was denied. Allow camera access for this site in the browser settings and try again."
+                            : `Could not open the camera (${e.name}).`, true);
+    return;
+  }
+  running = true;
+  await keepScreenOn();
+  $("setupRow").classList.add("hidden");
+  $("flipBtn").classList.remove("hidden");
+  $("startBtn").textContent = "Stop";
+  $("startBtn").className = "stop";
+  $("startBtn").disabled = false;
+  connect();
+}
+
+function stop(resetMsg = true) {
+  running = false;
+  clearTimeout(sendTimer);
+  waitingAck = false;
+  if (ws) { ws.onclose = null; ws.close(); ws = null; }
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  stream = null;
+  $("video").srcObject = null;
+  wakeLock?.release?.(); wakeLock = null;
+  $("badge").classList.add("hidden");
+  $("flipBtn").classList.add("hidden");
+  $("setupRow").classList.remove("hidden");
+  $("startBtn").textContent = "Start camera";
+  $("startBtn").className = "";
+  $("fps").textContent = "";
+  if (resetMsg) setStatus("", "Stopped. Tap Start camera to connect again.");
+}
+
+$("startBtn").onclick = () => running ? stop() : start();
+$("flipBtn").onclick = async () => {
+  facing = facing === "environment" ? "user" : "environment";
+  try { await openCamera(); } catch (e) { setStatus("err", `Could not switch camera (${e.name}).`, true); }
+};
+document.addEventListener("visibilitychange", async () => {
+  if (document.visibilityState === "visible" && running && !wakeLock) {
+    await keepScreenOn();
+  }
+});
+
+if (!TOKEN && !["localhost", "127.0.0.1"].includes(location.hostname)) {
+  setStatus("err", "This link is missing its access token. Scan the QR code shown on the laptop.", true);
+} else {
+  preflight();
+}
+</script>
+</body>
+</html>

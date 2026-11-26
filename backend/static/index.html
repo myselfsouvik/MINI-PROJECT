@@ -46,6 +46,10 @@
   .dogs img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 6px; background: var(--bg); }
   ul.events { list-style: none; margin: 0; padding: 0; max-height: 300px; overflow: auto; }
   ul.events li { padding: 4px 0; border-bottom: 1px solid var(--line); }
+  .qr { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+  .qr img { width: 180px; height: 180px; background: #fff; border-radius: 8px; padding: 6px; }
+  .qr > div { flex: 1 1 220px; min-width: 0; }
+  .qr code { word-break: break-all; }
   .bar { display: flex; height: 14px; border-radius: 7px; overflow: hidden; background: var(--bg); }
 </style>
 </head>
@@ -66,6 +70,11 @@
         <a href="#" id="scanCams">Scan for webcams</a> (a phone on USB shows up here)
       </p>
       <p class="error" id="addError"></p>
+    </div>
+
+    <div class="panel">
+      <h2>Connect a phone from its browser</h2>
+      <div id="phoneBox"><a href="#" id="phoneBtn">Show QR code</a></div>
     </div>
 
     <div class="panel">
@@ -168,6 +177,17 @@ $("scanCams").onclick = async (e) => {
       : "No webcams found.";
     $("localCams").querySelectorAll("a[data-i]").forEach(a => a.onclick = (ev) => { ev.preventDefault(); $("srcInput").value = a.dataset.i; });
   } catch (err) { $("localCams").textContent = err.message; }
+};
+
+$("phoneBtn").onclick = async (e) => {
+  e.preventDefault();
+  const info = await api("/api/phone-link");
+  if (!info.enabled) { $("phoneBox").innerHTML = `<span class="muted">${esc(info.hint)}</span>`; return; }
+  if (!info.urls.length) { $("phoneBox").innerHTML = '<span class="error">No Wi-Fi address found. Connect this laptop to Wi-Fi or a phone hotspot.</span>'; return; }
+  $("phoneBox").innerHTML = `<div class="qr"><img src="${withToken(info.qr_url)}" alt="QR code to open the phone camera page">
+    <div><p style="margin:0 0 6px">1. Phone on the same Wi-Fi as this laptop.<br>2. Scan with the phone camera.<br>
+    3. Accept the security warning (self-signed certificate).<br>4. Tap <b>Start camera</b>.</p>
+    <p class="muted" style="margin:0">Or type: <code>${esc(info.urls[0])}</code></p></div></div>`;
 };
 
 async function loadSettings() {

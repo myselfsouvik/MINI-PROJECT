@@ -9,11 +9,12 @@ python -m backend.server --source 0                 # laptop webcam
 python -m backend.server --source 1                 # phone over USB (DroidCam / Iriun)
 python -m backend.server --source recordings/clip.mp4
 python -m backend.server                            # start empty, add cameras from the page
+python -m backend.server --phone                    # + phones connect from their browser via QR code
 ```
 
 Open **http://127.0.0.1:8000** for the test console and **http://127.0.0.1:8000/docs** for interactive API docs.
 
-Options: `--host 0.0.0.0` (reachable from other devices on the Wi-Fi), `--port`, `--model` (swap in a fine-tuned model), `--conf`, `--max-fps` (save CPU).
+Options: `--phone` (HTTPS server on port 8443 for phones, see [docs/PHONE_CAMERA.md](../docs/PHONE_CAMERA.md)), `--host 0.0.0.0` (reachable from other devices on the Wi-Fi), `--port`, `--model` (swap in a fine-tuned model), `--conf`, `--max-fps` (save CPU).
 
 ## Files
 
@@ -26,6 +27,9 @@ Options: `--host 0.0.0.0` (reachable from other devices on the Wi-Fi), `--port`,
 | `app.py` | FastAPI routes, MJPEG stream, WebSocket |
 | `server.py` | Command-line entry point |
 | `static/index.html` | Temporary test console (the real dashboard is `frontend/`) |
+| `static/phone.html` | Page the phone opens: streams its camera to the laptop |
+| `phone.py` | Wi-Fi address, self-signed HTTPS certificate, QR code |
+| `security.py` | Access token and checks on what can be opened as a camera |
 | `camera_test.py` | Quick camera check without the server |
 
 Runtime data (database + dog snapshots) is written to `backend/storage/` and is not committed.
@@ -50,6 +54,9 @@ Runtime data (database + dog snapshots) is written to `backend/storage/` and is 
 | GET / PATCH | `/api/settings` | `confidence`, `max_fps`, `draw_people`, `draw_trails` |
 | WS | `/ws/live` | every 0.5 s: `{ts, sources: {id: live state}, events: [new events]}` |
 | GET | `/media/dogs/dog_<id>.jpg` | saved dog photo |
+| GET | `/api/phone-link` | `{enabled, urls, qr_url, phones_connected}` |
+| GET | `/api/phone-link/qr.svg` | QR code image for the phone link |
+| WS | `/ws/phone?token=&name=` | phone sends JPEG frames (binary); server answers each with `{type: "ack", dogs, people}` |
 
 CORS is open for the Vite dev server on `http://localhost:5173`.
 

@@ -75,6 +75,7 @@ Press **Q** in the camera window to stop.
 
 ```bash
 python -m backend.server --source 0        # or 1 for a USB phone, or a video file
+python -m backend.server --phone           # phones connect from their browser by scanning a QR code
 ```
 
 Open http://127.0.0.1:8000 for live video with dog boxes, activity labels, saved dogs and events, and http://127.0.0.1:8000/docs for the API. Details: [backend/README.md](backend/README.md).

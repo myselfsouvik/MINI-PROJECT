@@ -12,7 +12,8 @@ Two rules:
 2. **What can be opened as a camera.** Through the API, video files must be
    inside the media folder (``recordings/`` by default), and stream URLs can't
    point at link-local / multicast addresses (e.g. 169.254.x.x) or, for
-   requests from other devices, at this computer itself. This stops the
+   requests from other devices, at this computer itself; other devices must
+   also use IP addresses rather than host names. This stops the
    "camera" feature being used to read files from the disk or to make the
    laptop fetch other internal services. Sources given on the command line
    (``--source``) are trusted and skip these checks.
@@ -60,6 +61,15 @@ def check_source(source: str, media_dir: Path, local_client: bool) -> None:
         host = urlparse(str(value)).hostname
         if not host:
             raise ValueError(f"Stream URL {value!r} has no host.")
+        # Other devices must give an IP address, not a name. A name is looked
+        # up again when the camera connects, and could then point somewhere
+        # else than what we checked here (DNS rebinding). Phone camera apps
+        # always show an IP address anyway.
+        if not local_client:
+            try:
+                ipaddress.ip_address(host)
+            except ValueError:
+                raise ValueError("Use the camera's IP address (e.g. 192.168.1.5), not a host name.")
         try:
             addresses = {info[4][0] for info in socket.getaddrinfo(host, None)}
         except socket.gaierror:
