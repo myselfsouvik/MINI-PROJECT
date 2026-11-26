@@ -92,7 +92,7 @@ python -m backend.server --source 0        # or 1 for a USB phone, or a video fi
 python -m backend.server --phone           # phones connect from their browser by scanning a QR code
 ```
 
-Open http://127.0.0.1:8000 for live video with dog boxes, activity labels, saved dogs, events and alerts (draw a zone like a school gate on the video and get an alert with a photo when a dog walks in), analytics (heat map, speeds), video upload, a model picker, a **Record** button for collecting training clips and a short video clip with every alert, insights from the animal-bites dataset, and http://127.0.0.1:8000/docs for the API. Details: [backend/README.md](backend/README.md).
+Open http://127.0.0.1:8000 for live video with dog boxes, activity labels, saved dogs, events and alerts (draw a zone like a school gate on the video and get an alert with a photo when a dog walks in), analytics (heat map, speeds), video upload, a model picker, a **Record** button for collecting training clips and a short video clip with every alert, insights from the animal-bites dataset, a profile for each dog (where it went, how it moved) and CSV export, and http://127.0.0.1:8000/docs for the API. Details: [backend/README.md](backend/README.md).
 
 ### Testing a camera (laptop, phone over USB or Wi-Fi)
 

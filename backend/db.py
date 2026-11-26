@@ -21,6 +21,7 @@ import sqlite3
 import threading
 import time
 from pathlib import Path
+from urllib.parse import quote
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS dogs (
@@ -135,16 +136,39 @@ class Database:
         rows = self._read("SELECT * FROM dogs WHERE id = ?", (dog_id,))
         return rows[0] if rows else None
 
+    DOG_ORDER = {
+        "recent": "last_seen DESC",
+        "longest": "(last_seen - first_seen) DESC",
+        "fastest": "max_speed DESC",
+        "active": "(walking_s + running_s) DESC",
+        "oldest": "first_seen ASC",
+    }
+
     def list_dogs(self, limit: int = 100, source_id: str | None = None,
-                  min_seconds: float = 0.0) -> list[dict]:
-        sql = "SELECT * FROM dogs WHERE (last_seen - first_seen) >= ?"
-        params: list = [min_seconds]
+                  min_seconds: float = 0.0, sort: str = "recent", since: float = 0.0) -> list[dict]:
+        if sort not in self.DOG_ORDER:
+            raise ValueError(f"sort must be one of {list(self.DOG_ORDER)}")
+        sql = "SELECT * FROM dogs WHERE (last_seen - first_seen) >= ? AND last_seen >= ?"
+        params: list = [min_seconds, since]
         if source_id:
             sql += " AND source_id = ?"
             params.append(source_id)
-        sql += " ORDER BY last_seen DESC LIMIT ?"
+        sql += f" ORDER BY {self.DOG_ORDER[sort]}, id DESC LIMIT ?"     # ORDER from a fixed list only
         params.append(limit)
         return self._read(sql, tuple(params))
+
+    def dog_path(self, dog_id: int, max_points: int = 300) -> list[dict]:
+        """Where the dog went: evenly thinned positions (0..1 of the frame), oldest first."""
+        rows = self._read(
+            "SELECT ts, center_x AS x, center_y AS y, activity FROM observations "
+            "WHERE dog_id = ? AND center_x <= 1 AND center_y <= 1 ORDER BY ts", (dog_id,))
+        if len(rows) > max_points:
+            step = len(rows) / max_points
+            rows = [rows[int(i * step)] for i in range(max_points - 1)] + [rows[-1]]
+        return rows
+
+    def dog_events(self, dog_id: int, limit: int = 100) -> list[dict]:
+        return self._read("SELECT * FROM events WHERE dog_id = ? ORDER BY id DESC LIMIT ?", (dog_id, limit))
 
     # -- observations ----------------------------------------------------------
 
@@ -269,6 +293,38 @@ class Database:
         sql += " ORDER BY id DESC LIMIT ?"
         params.append(limit)
         return self._read(sql, tuple(params))
+
+    # -- export ----------------------------------------------------------------
+
+    EXPORTS = {
+        "dogs": ("SELECT id, source_id, track_id, first_seen, last_seen, "
+                 "ROUND(last_seen - first_seen, 1) AS seconds_visible, ROUND(resting_s, 1) AS resting_s, "
+                 "ROUND(walking_s, 1) AS walking_s, ROUND(running_s, 1) AS running_s, "
+                 "ROUND(max_speed, 3) AS max_speed, ROUND(best_confidence, 3) AS best_confidence, snapshot "
+                 "FROM dogs WHERE last_seen >= ? ORDER BY id"),
+        "observations": ("SELECT o.id, o.dog_id, d.source_id, o.ts, o.center_x, o.center_y, o.speed, "
+                         "o.activity, o.confidence FROM observations o JOIN dogs d ON d.id = o.dog_id "
+                         "WHERE o.ts >= ? ORDER BY o.id"),
+        "events": ("SELECT id, ts, source_id, type, dog_id, message, snapshot, clip FROM events "
+                   "WHERE ts >= ? ORDER BY id"),
+    }
+
+    def export_rows(self, name: str, since: float = 0.0):
+        """
+        Yields the column names, then each row, from its own read-only
+        connection, so a big export doesn't block the camera writing to the DB.
+        """
+        if name not in self.EXPORTS:
+            raise ValueError(f"export must be one of {list(self.EXPORTS)}")
+        uri = f"file:{quote(self.path.resolve().as_posix(), safe='/:')}?mode=ro"     # spaces etc. escaped
+        conn = sqlite3.connect(uri, uri=True, check_same_thread=False)
+        try:
+            cur = conn.execute(self.EXPORTS[name], (since,))
+            yield [c[0] for c in cur.description]
+            while batch := cur.fetchmany(500):
+                yield from batch
+        finally:
+            conn.close()
 
     # -- zones -----------------------------------------------------------------
 

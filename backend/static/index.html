@@ -67,6 +67,14 @@
   .hbars { display: grid; grid-template-columns: max-content 1fr max-content; gap: 3px 8px; align-items: center; font-size: 12px; margin-bottom: 4px; }
   .hbars i { display: block; height: 10px; background: var(--accent); border-radius: 0 3px 3px 0; min-width: 1px; }
   details summary { cursor: pointer; font-weight: 600; margin: 8px 0 4px; }
+  .dogs figure { cursor: pointer; }
+  .dogs figure.sel img { outline: 2px solid var(--accent); }
+  .dogprof { display: grid; grid-template-columns: 110px 1fr; gap: 10px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+  .dogprof img { width: 110px; aspect-ratio: 1; object-fit: cover; border-radius: 6px; background: var(--bg); }
+  .dogprof canvas { grid-column: 1 / -1; width: 100%; aspect-ratio: 16 / 9; border-radius: 6px; background: var(--bg); }
+  .dogprof ul { grid-column: 1 / -1; list-style: none; margin: 0; padding: 0; font-size: 12px; }
+  .rowhead { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .rowhead select { width: auto; }
 </style>
 </head>
 <body>
@@ -155,8 +163,17 @@
       <p class="muted" id="insSource" style="margin:6px 0 0"></p>
     </div>
     <div class="panel">
-      <h2>Dogs seen</h2>
+      <div class="rowhead"><h2>Dogs seen</h2>
+        <select id="dogSort" title="Sort dogs">
+          <option value="recent">Most recent</option><option value="longest">Longest stay</option>
+          <option value="active">Most active</option><option value="fastest">Fastest</option>
+        </select></div>
       <div class="dogs" id="dogs"></div>
+      <div id="dogProfile"></div>
+      <p class="muted" style="margin:10px 0 0">Export for the report (CSV):
+        <a id="expDogs" href="/api/export/dogs.csv">dogs</a> ·
+        <a id="expObs" href="/api/export/observations.csv">positions every second</a> ·
+        <a id="expEvents" href="/api/export/events.csv">events</a></p>
     </div>
     <div class="panel">
       <h2>Events</h2>
@@ -341,10 +358,13 @@ async function loadSettings() {
 $("conf").oninput = () => $("confVal").textContent = Number($("conf").value).toFixed(2);
 $("conf").onchange = () => api("/api/settings", { method: "PATCH", body: JSON.stringify({ confidence: Number($("conf").value) }) });
 
+let selectedDog = null;
 async function loadSide() {
-  const [dogs, events, act] = await Promise.all([api("/api/dogs?limit=24"), api("/api/events?limit=40"), api("/api/stats/activity")]);
-  $("dogs").innerHTML = dogs.map(d => `<figure>${d.snapshot_url ? `<img src="${withToken(d.snapshot_url + "?t=" + Math.floor(d.last_seen))}" alt="Dog ${d.id}">` : ""}
+  const sort = $("dogSort").value;
+  const [dogs, events, act] = await Promise.all([api(`/api/dogs?limit=24&sort=${sort}`), api("/api/events?limit=40"), api("/api/stats/activity")]);
+  $("dogs").innerHTML = dogs.map(d => `<figure data-id="${d.id}" class="${d.id === selectedDog ? "sel" : ""}">${d.snapshot_url ? `<img src="${withToken(d.snapshot_url + "?t=" + Math.floor(d.last_seen))}" alt="Dog ${d.id}">` : ""}
     <figcaption>#${d.id} · ${d.seconds_visible}s</figcaption></figure>`).join("") || '<span class="muted">None yet.</span>';
+  if (selectedDog) loadDog(selectedDog);
   $("events").innerHTML = events.map(e => `<li class="${ALERT_TYPES.includes(e.type) ? "alert" : ""}">
     <span class="muted">${fmtTime(e.ts)}</span> ${ALERT_TYPES.includes(e.type) ? "⚠ " : ""}${esc(e.message)}
     ${e.snapshot_url ? ` <a href="${withToken(e.snapshot_url)}" target="_blank">photo</a>` : ""}
@@ -443,6 +463,51 @@ async function loadAnalytics() {
   const top = Math.max(1, ...sp.counts);
   $("hist").innerHTML = sp.counts.map((n, i) => `<div title="${sp.edges[i]}–${sp.edges[i + 1]}: ${n}s" style="height:${100 * n / top}%"></div>`).join("");
   $("histText").textContent = `0 → ${sp.edges[sp.edges.length - 1]}+ · resting < 0.25 ≤ walking < 1.5 ≤ running`;
+}
+
+// -- dog profile ---------------------------------------------------------------------
+$("dogSort").onchange = loadSide;
+$("dogs").onclick = (ev) => {
+  const fig = ev.target.closest("figure[data-id]");
+  if (!fig) return;
+  const id = Number(fig.dataset.id);
+  selectedDog = selectedDog === id ? null : id;           // click again to close
+  document.querySelectorAll("#dogs figure").forEach(f => f.classList.toggle("sel", Number(f.dataset.id) === selectedDog));
+  if (selectedDog) loadDog(selectedDog); else $("dogProfile").innerHTML = "";
+};
+["expDogs", "expObs", "expEvents"].forEach(id => $(id).href = withToken($(id).getAttribute("href")));
+
+async function loadDog(id) {
+  let d;
+  try { d = await api(`/api/dogs/${id}?observations=false`); }
+  catch (err) { $("dogProfile").textContent = err.message; return; }
+  if (id !== selectedDog) return;
+  const sh = d.activity_share, fmt = (x) => Math.round(100 * x) + "%";
+  $("dogProfile").innerHTML = `<div class="dogprof">
+    ${d.snapshot_url ? `<img src="${withToken(d.snapshot_url)}" alt="Dog ${d.id}">` : "<div></div>"}
+    <div><b>Dog #${d.id}</b> <span class="muted">(${esc(d.source_id)}, track ${d.track_id})</span><br>
+      <span class="muted">${fmtTime(d.first_seen)} → ${fmtTime(d.last_seen)} · ${d.seconds_visible}s</span><br>
+      ${d.main_activity ? `Mostly <span class="pill ${d.main_activity}">${d.main_activity}</span>` : ""}
+      <div class="bar" style="margin:6px 0">${["RESTING","WALKING","RUNNING"].map(a => `<div class="${a}" style="width:${100 * sh[a]}%"></div>`).join("")}</div>
+      <span class="muted">Resting ${fmt(sh.RESTING)} · Walking ${fmt(sh.WALKING)} · Running ${fmt(sh.RUNNING)} · top speed ${d.max_speed.toFixed(2)}</span></div>
+    <canvas id="dogPath" width="320" height="180" title="Where this dog went (colour = activity)"></canvas>
+    <ul>${d.events.slice(0, 8).map(e => `<li><span class="muted">${fmtTime(e.ts)}</span> ${esc(e.message)}
+      ${e.snapshot_url ? ` <a href="${withToken(e.snapshot_url)}" target="_blank">photo</a>` : ""}</li>`).join("")}</ul></div>`;
+  const c = $("dogPath"), ctx = c.getContext("2d"), css = getComputedStyle(document.documentElement);
+  const colour = { RESTING: css.getPropertyValue("--resting"), WALKING: css.getPropertyValue("--walking"), RUNNING: css.getPropertyValue("--running") };
+  ctx.lineWidth = 2;
+  d.path.forEach((p, i) => {
+    const x = p.x * c.width, y = p.y * c.height;
+    if (i) {
+      const q = d.path[i - 1];
+      ctx.strokeStyle = colour[p.activity] || "#888";
+      ctx.beginPath(); ctx.moveTo(q.x * c.width, q.y * c.height); ctx.lineTo(x, y); ctx.stroke();
+    }
+    if (i === 0 || i === d.path.length - 1) {
+      ctx.fillStyle = i ? "#e5482a" : "#fff";
+      ctx.beginPath(); ctx.arc(x, y, 4, 0, 2 * Math.PI); ctx.fill();
+    }
+  });
 }
 
 // -- insights (bites dataset) --------------------------------------------------------
