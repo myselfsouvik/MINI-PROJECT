@@ -27,6 +27,7 @@ Options: `--phone` (HTTPS server on port 8443 for phones, see [docs/PHONE_CAMERA
 | `cameras.py` | `CameraSource`: webcam / USB phone / Wi-Fi phone / video file, always returns the newest frame, auto-reconnects |
 | `behaviour.py` | Per-dog speed in **box heights per second** (independent of distance and resolution) and RESTING / WALKING / RUNNING labels |
 | `pipeline.py` | One thread per camera: YOLO detect + ByteTrack → behaviour → alerts → database, draws the annotated frame |
+| `report.py` | Session report: one printable HTML page (summary, activity, heat map, speeds, alerts with photos, dogs, model results) |
 | `housekeeping.py` | Storage use and cleanup of old dogs, positions, events and their photos/clips (manual or automatic) |
 | `insights.py` | Charts for the Insights page from the animal-bites dataset (cleans dates and breed spellings, cached) |
 | `features.py` | Movement features for the behaviour classifier, and loading `models/behaviour.joblib` |
@@ -67,6 +68,7 @@ Runtime data (database + dog snapshots) is written to `backend/storage/` and is 
 | GET | `/api/stats/speeds?minutes=60&bin_width=0.25&max_speed=4&source_id=` | `{edges, counts}` speed histogram; last bin = max_speed and above |
 | GET | `/api/stats/heatmap?minutes=60&cols=16&rows=9&source_id=` | `{grid, max}` dog-seconds per cell over the camera view (row 0 = top) |
 | GET | `/api/stats/summary?minutes=1440` | `{dogs_seen, alerts, events: {type: n}, busiest_hour, activity_seconds}` for dashboard cards |
+| GET | `/api/report?minutes=60&download=false` | the session report as HTML (photos embedded, works offline; Ctrl+P → PDF). `download=true` saves it as a file |
 | GET | `/api/storage` | sizes of the database, dog photos, alert photos/clips, recordings; row counts; free disk; `keep_days` and the last automatic cleanup |
 | POST | `/api/storage/cleanup` | body `{days, dry_run?: false, vacuum?: false}`: delete data older than `days` (at least 1 hour). `dry_run` only reports what would go |
 | GET | `/api/insights` | animal-bites dataset: `summary` (records, dog share, head-bite share, busiest month, rabies tests…) and `charts`: `species`, `by_year`, `by_month`, `by_weekday`, `breeds`, `body_part`, `gender`, `vaccination`, `rabies_result`, `outcome`, each `{title, labels, values, note}` ready for Chart.js |
@@ -112,6 +114,16 @@ CORS is open for the Vite dev server on `http://localhost:5173`.
 Alerts are saved as events with a photo in `backend/storage/alerts/`. Zones are stored per camera (webcam number, file path, stream URL or phone name), so they come back after a restart. These are simple, explainable rules on top of the detector; we don't claim to detect "aggression".
 
 To draw a zone on the test page: pick a camera, press **Draw a zone**, click the corners on the video, name it and save.
+
+## Session report
+
+For the project report, slides or the viva: open **Session report** in the console (last hour or 24 h), or `GET /api/report?minutes=120`. Without the server running:
+
+```bash
+python -m backend.report --minutes 120 --out session_report.html --model models/yolo11n.pt
+```
+
+One page with the numbers (dogs seen, alerts, busiest hour, time resting / walking / running), activity over time, where dogs spent time, a speed histogram, every alert with its photo, the dogs that stayed longest and the models' test results. Photos are embedded, so the single file can be emailed or printed to PDF. It contains camera photos, so it is git-ignored.
 
 ## Storage
 

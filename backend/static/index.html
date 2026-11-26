@@ -186,6 +186,9 @@
         <a id="expDogs" href="/api/export/dogs.csv">dogs</a> ·
         <a id="expObs" href="/api/export/observations.csv">positions every second</a> ·
         <a id="expEvents" href="/api/export/events.csv">events</a></p>
+      <p class="muted" style="margin:6px 0 0">Session report (print to PDF):
+        <a id="repHour" href="/api/report?minutes=60" target="_blank">last hour</a> ·
+        <a id="repDay" href="/api/report?minutes=1440" target="_blank">last 24 h</a></p>
     </div>
     <div class="panel">
       <h2>Events</h2>
@@ -487,7 +490,7 @@ $("dogs").onclick = (ev) => {
   document.querySelectorAll("#dogs figure").forEach(f => f.classList.toggle("sel", Number(f.dataset.id) === selectedDog));
   if (selectedDog) loadDog(selectedDog); else $("dogProfile").innerHTML = "";
 };
-["expDogs", "expObs", "expEvents"].forEach(id => $(id).href = withToken($(id).getAttribute("href")));
+["expDogs", "expObs", "expEvents", "repHour", "repDay"].forEach(id => $(id).href = withToken($(id).getAttribute("href")));
 
 async function loadDog(id) {
   let d;
