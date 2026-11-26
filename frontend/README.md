@@ -2,6 +2,10 @@
 
 React dashboard (Live, Dogs, Analytics, Alerts, Zones, Model, Insights). Owner: Nandini.
 
+**Insights page:** `GET /api/insights` returns every chart as `{title, labels, values, note}`, so each one is
+`new Chart(el, {type: "bar", data: {labels: c.labels, datasets: [{label: c.title, data: c.values}]}})`.
+Show `note` under the chart; it explains what the numbers can and can't say.
+
 See [PLAN.md](../PLAN.md) for the full roadmap.
 
 ## Connecting to the backend

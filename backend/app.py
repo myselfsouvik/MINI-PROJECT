@@ -70,6 +70,7 @@ from backend.cameras import PHONE_APPS, CameraSource, PushCameraSource, list_loc
 from backend.phone import lan_ips, qr_svg
 from backend.db import Database
 from backend.features import BehaviourModel
+from backend.insights import InsightsCache
 from backend.pipeline import Pipeline, PipelineSettings, class_ids
 from backend.security import check_source, is_local_client, token_ok
 
@@ -95,6 +96,8 @@ class AppSettings:
     frontend_dir: str = str(ROOT / "frontend" / "dist")
     # Trained behaviour classifier; used if the file exists (see training/behaviour).
     behaviour_model_path: str = str(ROOT / "models" / "behaviour.joblib")
+    # Animal-bites dataset for the Insights page.
+    bites_csv: str = str(ROOT / "data" / "tabular" / "Health_AnimalBites.csv")
 
 
 PUBLIC_PAGES = {"/", "/phone", "/console"}   # pages with no data in them; the API still needs the token
@@ -644,6 +647,18 @@ def create_app(settings: AppSettings | None = None, initial_sources: list[str] |
         out["activity_seconds"] = db.activity_summary(since)
         out["minutes"] = minutes
         return out
+
+    insights = InsightsCache(settings.bites_csv)
+
+    @app.get("/api/insights")
+    def bite_insights():
+        """Charts from the animal-bites dataset, each {title, labels, values, note}."""
+        try:
+            return insights.get()
+        except FileNotFoundError:
+            raise HTTPException(404, f"Bites dataset not found ({Path(settings.bites_csv).name})")
+        except (ValueError, KeyError, TypeError) as e:
+            raise HTTPException(500, f"Can't read the bites dataset: {e}")
 
     @app.get("/api/stats/activity")
     def activity_stats(minutes: float = Query(60, gt=0)):
