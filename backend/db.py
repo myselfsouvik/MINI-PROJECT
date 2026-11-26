@@ -294,6 +294,57 @@ class Database:
         params.append(limit)
         return self._read(sql, tuple(params))
 
+    # -- housekeeping ----------------------------------------------------------
+
+    def counts(self) -> dict:
+        with self._lock:
+            return {t: self._conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
+                    for t in ("dogs", "observations", "events", "zones")}
+
+    def delete_before(self, cutoff: float, dry_run: bool = False) -> dict:
+        """
+        Remove data older than `cutoff` (a timestamp): dogs last seen before it
+        (with their per-second rows), older per-second rows of other dogs, and
+        older events. Zones are kept. Returns the counts and the files
+        (snapshots, alert photos and clips) that belonged to the removed rows,
+        so the caller can delete them.
+        """
+        with self._lock:
+            q = lambda sql: self._conn.execute(sql, (cutoff,)).fetchall()     # noqa: E731
+            dog_files = [r[0] for r in q("SELECT snapshot FROM dogs WHERE last_seen < ? AND snapshot IS NOT NULL")]
+            event_files = [f for r in q("SELECT snapshot, clip FROM events WHERE ts < ?") for f in r if f]
+            result = {
+                "dogs": q("SELECT COUNT(*) FROM dogs WHERE last_seen < ?")[0][0],
+                "observations": self._conn.execute(
+                    "SELECT COUNT(*) FROM observations WHERE ts < ? OR dog_id IN "
+                    "(SELECT id FROM dogs WHERE last_seen < ?)", (cutoff, cutoff)).fetchone()[0],
+                "events": q("SELECT COUNT(*) FROM events WHERE ts < ?")[0][0],
+                "files": dog_files + event_files,
+            }
+            if not dry_run:
+                try:
+                    self._conn.execute("DELETE FROM observations WHERE ts < ?", (cutoff,))
+                    self._conn.execute("DELETE FROM events WHERE ts < ?", (cutoff,))
+                    self._conn.execute("DELETE FROM dogs WHERE last_seen < ?", (cutoff,))   # cascades
+                    self._conn.commit()
+                except sqlite3.Error:
+                    self._conn.rollback()
+                    raise
+                self._conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            return result
+
+    def referenced_files(self) -> set[str]:
+        """Every snapshot / clip path the database still points to."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT snapshot FROM dogs UNION SELECT snapshot FROM events UNION SELECT clip FROM events").fetchall()
+        return {r[0] for r in rows if r[0]}
+
+    def vacuum(self) -> None:
+        """Give freed space back to the disk (can take a few seconds on a big database)."""
+        with self._lock:
+            self._conn.execute("VACUUM")
+
     # -- export ----------------------------------------------------------------
 
     EXPORTS = {

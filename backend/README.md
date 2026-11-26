@@ -18,7 +18,7 @@ python -m backend.doctor                            # check this laptop before a
 
 Open **http://127.0.0.1:8000** for the dashboard and **http://127.0.0.1:8000/docs** for interactive API docs. Until the React dashboard is built, `/` shows the test console; the test console is always at **/console**.
 
-Options: `--phone` (HTTPS server on port 8443 for phones, see [docs/PHONE_CAMERA.md](../docs/PHONE_CAMERA.md)), `--host 0.0.0.0` (reachable from other devices on the Wi-Fi), `--port`, `--model` (swap in a fine-tuned model), `--conf`, `--max-fps` (save CPU).
+Options: `--phone` (HTTPS server on port 8443 for phones, see [docs/PHONE_CAMERA.md](../docs/PHONE_CAMERA.md)), `--host 0.0.0.0` (reachable from other devices on the Wi-Fi), `--port`, `--model` (swap in a fine-tuned model), `--conf`, `--max-fps` (save CPU), `--keep-days 7` (auto-delete data older than 7 days, see *Storage* below).
 
 ## Files
 
@@ -27,6 +27,7 @@ Options: `--phone` (HTTPS server on port 8443 for phones, see [docs/PHONE_CAMERA
 | `cameras.py` | `CameraSource`: webcam / USB phone / Wi-Fi phone / video file, always returns the newest frame, auto-reconnects |
 | `behaviour.py` | Per-dog speed in **box heights per second** (independent of distance and resolution) and RESTING / WALKING / RUNNING labels |
 | `pipeline.py` | One thread per camera: YOLO detect + ByteTrack → behaviour → alerts → database, draws the annotated frame |
+| `housekeeping.py` | Storage use and cleanup of old dogs, positions, events and their photos/clips (manual or automatic) |
 | `insights.py` | Charts for the Insights page from the animal-bites dataset (cleans dates and breed spellings, cached) |
 | `features.py` | Movement features for the behaviour classifier, and loading `models/behaviour.joblib` |
 | `alerts.py` | Alert rules: dog enters a zone, running dog closing in on a person, 3+ dogs together |
@@ -66,6 +67,8 @@ Runtime data (database + dog snapshots) is written to `backend/storage/` and is 
 | GET | `/api/stats/speeds?minutes=60&bin_width=0.25&max_speed=4&source_id=` | `{edges, counts}` speed histogram; last bin = max_speed and above |
 | GET | `/api/stats/heatmap?minutes=60&cols=16&rows=9&source_id=` | `{grid, max}` dog-seconds per cell over the camera view (row 0 = top) |
 | GET | `/api/stats/summary?minutes=1440` | `{dogs_seen, alerts, events: {type: n}, busiest_hour, activity_seconds}` for dashboard cards |
+| GET | `/api/storage` | sizes of the database, dog photos, alert photos/clips, recordings; row counts; free disk; `keep_days` and the last automatic cleanup |
+| POST | `/api/storage/cleanup` | body `{days, dry_run?: false, vacuum?: false}`: delete data older than `days` (at least 1 hour). `dry_run` only reports what would go |
 | GET | `/api/insights` | animal-bites dataset: `summary` (records, dog share, head-bite share, busiest month, rabies tests…) and `charts`: `species`, `by_year`, `by_month`, `by_weekday`, `breeds`, `body_part`, `gender`, `vaccination`, `rabies_result`, `outcome`, each `{title, labels, values, note}` ready for Chart.js |
 | GET | `/api/uploads` | videos in `recordings/` (uploads and recordings), each with `source` (for `POST /api/sources`) and `url` (download / play) |
 | GET | `/api/uploads/{path}` | the video file itself |
@@ -109,6 +112,14 @@ CORS is open for the Vite dev server on `http://localhost:5173`.
 Alerts are saved as events with a photo in `backend/storage/alerts/`. Zones are stored per camera (webcam number, file path, stream URL or phone name), so they come back after a restart. These are simple, explainable rules on top of the detector; we don't claim to detect "aggression".
 
 To draw a zone on the test page: pick a camera, press **Draw a zone**, click the corners on the video, name it and save.
+
+## Storage
+
+Every alert saves a photo and a short clip, and every dog a photo and one position per second, so a long run adds up (a few demo runs made about 90 MB). The **Storage** panel (or `GET /api/storage`) shows the sizes.
+
+- **Clean up** (`POST /api/storage/cleanup`) deletes dogs not seen for N days with their positions and photos, older positions of other dogs, older events with their photos and clips, and photo/clip files nothing points to. The console asks first and shows what will go (`dry_run`).
+- **Automatic:** `--keep-days 7` (or `AppSettings.keep_days`) runs the same cleanup at start and every hour.
+- Never deleted: zones, and videos in `recordings/` (uploads and captures). Files are only deleted inside the storage folder's `dogs/` and `alerts/`. Data younger than an hour is never touched.
 
 ## Recording
 

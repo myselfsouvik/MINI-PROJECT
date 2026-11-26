@@ -130,6 +130,18 @@
       <table><thead><tr><th>Dog</th><th>Activity</th><th>Speed (box h/s)</th><th>Conf.</th><th>Visible</th><th>In zone</th></tr></thead>
       <tbody id="liveDogs"></tbody></table>
     </div>
+
+    <div class="panel">
+      <h2>Storage</h2>
+      <div class="cards" id="storeCards"></div>
+      <p class="muted" id="storeText" style="margin:0 0 8px"></p>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <label>Delete data older than <input id="cleanDays" type="number" min="0.05" step="any" value="7"
+          style="flex:none;min-width:0;width:80px"> days</label>
+        <button class="ghost" id="cleanBtn">Clean up…</button>
+      </div>
+      <p class="muted" id="cleanMsg" style="margin:6px 0 0">Removes old dogs, positions, events and their photos/clips. Zones and videos are kept.</p>
+    </div>
   </section>
 
   <aside>
@@ -510,6 +522,33 @@ async function loadDog(id) {
   });
 }
 
+// -- storage ---------------------------------------------------------------------------
+async function loadStorage() {
+  try {
+    const s = await api("/api/storage");
+    $("storeCards").innerHTML = `<div><b>${s.database_mb} MB</b>database</div>
+      <div><b>${s.alert_files.mb} MB</b>alert photos/clips</div><div><b>${s.disk_free_gb} GB</b>disk free</div>`;
+    $("storeText").textContent = `${s.rows.dogs} dogs · ${s.rows.observations.toLocaleString()} positions · ${s.rows.events} events · `
+      + `dog photos ${s.dog_photos.mb} MB · recordings ${(s.captures.mb + s.uploads.mb).toFixed(1)} MB`
+      + (s.keep_days != null ? ` · auto-delete after ${s.keep_days} days` : "");
+  } catch (err) { $("storeText").textContent = err.message; }
+}
+$("cleanBtn").onclick = async () => {
+  const days = Number($("cleanDays").value);
+  try {
+    const body = (dry) => JSON.stringify({ days, dry_run: dry });
+    const plan = await api("/api/storage/cleanup", { method: "POST", body: body(true) });
+    if (!plan.dogs && !plan.events && !plan.files && !plan.observations) {
+      $("cleanMsg").textContent = `Nothing older than ${days} days.`; return;
+    }
+    if (!confirm(`Delete ${plan.dogs} dogs, ${plan.observations} positions, ${plan.events} events and `
+                 + `${plan.files} files (${plan.freed_mb} MB) older than ${days} days? This can't be undone.`)) return;
+    const r = await api("/api/storage/cleanup", { method: "POST", body: body(false) });
+    $("cleanMsg").textContent = `Deleted ${r.dogs} dogs, ${r.events} events and ${r.files} files (${r.freed_mb} MB freed).`;
+    loadStorage(); loadSide();
+  } catch (err) { $("cleanMsg").textContent = err.message; }
+};
+
 // -- insights (bites dataset) --------------------------------------------------------
 function hbars(chart) {
   const top = Math.max(1, ...chart.values);
@@ -530,7 +569,8 @@ async function loadInsights() {
   } catch (err) { $("insCharts").textContent = err.message; }
 }
 
-loadSources(); loadSettings(); loadSide(); connectWs(); loadVideos(); loadModels(); loadAnalytics(); loadInsights();
+loadSources(); loadSettings(); loadSide(); connectWs(); loadVideos(); loadModels(); loadAnalytics(); loadInsights(); loadStorage();
+setInterval(loadStorage, 60000);
 setInterval(loadSide, 5000);
 setInterval(loadAnalytics, 10000);
 // Keep the recording timer on the Record button moving.

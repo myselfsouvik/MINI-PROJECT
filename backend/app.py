@@ -73,6 +73,7 @@ from backend.cameras import PHONE_APPS, CameraSource, PushCameraSource, list_loc
 from backend.phone import lan_ips, qr_svg
 from backend.db import Database
 from backend.features import BehaviourModel
+from backend.housekeeping import MIN_DAYS, AutoCleaner, cleanup as clean_storage, usage as storage_usage
 from backend.insights import InsightsCache
 from backend.pipeline import Pipeline, PipelineSettings, class_ids
 from backend.security import check_source, is_local_client, token_ok
@@ -101,6 +102,9 @@ class AppSettings:
     behaviour_model_path: str = str(ROOT / "models" / "behaviour.joblib")
     # Animal-bites dataset for the Insights page.
     bites_csv: str = str(ROOT / "data" / "tabular" / "Health_AnimalBites.csv")
+    # Delete dogs, positions, events and their photos/clips older than this many
+    # days (checked at start and every hour). None = keep everything.
+    keep_days: float | None = None
 
 
 PUBLIC_PAGES = {"/", "/phone", "/console"}   # pages with no data in them; the API still needs the token
@@ -143,6 +147,12 @@ class SettingsPatch(BaseModel):
     pack_size: int | None = Field(None, ge=2, le=20)
     use_behaviour_model: bool | None = None
     alert_clips: bool | None = None
+
+
+class Cleanup(BaseModel):
+    days: float = Field(..., ge=MIN_DAYS, description="delete data older than this many days (at least 1 hour)")
+    dry_run: bool = Field(False, description="only report what would be deleted")
+    vacuum: bool = Field(False, description="also shrink the database file (takes a few seconds)")
 
 
 class StartRecording(BaseModel):
@@ -260,11 +270,14 @@ def create_app(settings: AppSettings | None = None, initial_sources: list[str] |
     # phones), and each server runs the lifespan. Only the first start and the
     # last stop do any work.
     servers_running = {"n": 0}
+    cleaner = {"auto": None}
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         servers_running["n"] += 1
         if servers_running["n"] == 1:
+            if settings.keep_days is not None:
+                cleaner["auto"] = AutoCleaner(db, storage, settings.keep_days).start()
             for s in initial_sources or []:
                 try:
                     sid = await asyncio.to_thread(manager.add, s)
@@ -276,6 +289,8 @@ def create_app(settings: AppSettings | None = None, initial_sources: list[str] |
         finally:
             servers_running["n"] -= 1
             if servers_running["n"] == 0:
+                if cleaner["auto"]:
+                    await asyncio.to_thread(cleaner["auto"].stop)
                 await asyncio.to_thread(manager.stop_all)
                 db.close()
 
@@ -414,6 +429,28 @@ def create_app(settings: AppSettings | None = None, initial_sources: list[str] |
         finally:
             if sid in manager.pipelines:
                 await asyncio.to_thread(manager.remove, sid)
+
+    # -- storage ---------------------------------------------------------------
+
+    @app.get("/api/storage")
+    def get_storage():
+        """Disk use of the database, photos, alert clips and recordings."""
+        out = storage_usage(db, storage, Path(settings.media_dir))
+        auto = cleaner["auto"]
+        out["keep_days"] = settings.keep_days
+        out["last_auto_cleanup"] = auto.last if auto else None
+        out["auto_cleanup_error"] = auto.last_error if auto else None
+        return out
+
+    @app.post("/api/storage/cleanup")
+    def cleanup_storage(body: Cleanup):
+        """Delete old dogs, positions, events and their photos/clips. Zones and videos are kept."""
+        result = clean_storage(db, storage, body.days, body.dry_run, body.vacuum)
+        if not body.dry_run:
+            db.add_event("system", "storage_cleaned",
+                         f"Deleted data older than {body.days:g} days: {result['dogs']} dogs, "
+                         f"{result['events']} events, {result['files']} files ({result['freed_mb']} MB)")
+        return result
 
     @app.get("/api/health")
     def health():
