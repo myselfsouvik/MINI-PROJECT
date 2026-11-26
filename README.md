@@ -29,7 +29,7 @@ MINI-PROJECT/
 ├── docs/PHONE_CAMERA.md # how to connect a phone as the camera
 ├── tests/               # automated tests (python -m pytest tests)
 ├── frontend/            # (in progress) React dashboard
-├── training/            # detector, pose and behaviour training (behaviour/: clips → features → classifier)
+├── training/            # detector/: recordings → pre-labelled frames → evaluation table; behaviour/: clips → features → classifier
 ├── notebooks/           # (in progress) bites dataset EDA
 ├── models/
 │   └── yolo11n.pt       # Pre-trained YOLO11-nano weights (COCO)

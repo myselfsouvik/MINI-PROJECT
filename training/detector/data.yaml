@@ -1,0 +1,20 @@
+# Dataset definition for fine-tuning the dog detector (PLAN 3.1).
+# Copy the dataset to datasets/street_dogs/ (or Google Drive on Colab) laid out as:
+#
+#   street_dogs/
+#     images/train/*.jpg   labels/train/*.txt
+#     images/val/*.jpg     labels/val/*.txt
+#     images/test/*.jpg    labels/test/*.txt   <- our own ~300 frames, never used for training
+#
+# Each .txt has one line per box: "class cx cy w h" (0..1). Images with no dog
+# (hard negatives: cats, goats, cows, bags) get an empty .txt file.
+
+path: ../../datasets/street_dogs   # relative to this file; on Colab use /content/street_dogs
+train: images/train
+val: images/val
+test: images/test
+
+# Same order as training/detector/extract_frames.py writes in classes.txt.
+names:
+  0: dog
+  1: person
