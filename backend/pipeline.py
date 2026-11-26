@@ -2,6 +2,7 @@
 Detection pipeline: one per camera.
 
     CameraSource ──► YOLO detect + track ──► BehaviourTracker ──► Database
+                                       ├──► AlertEngine (zones, running at person, pack)
                                        └──► annotated JPEG for the live stream
 
 Runs on its own thread. The web server only reads its latest results, so a
@@ -19,6 +20,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from backend.alerts import AlertEngine, AlertRules, DogView, Zone
 from backend.behaviour import RESTING, RUNNING, WALKING, BehaviourTracker, TrackState
 from backend.cameras import CameraSource
 from backend.db import Database
@@ -33,6 +35,8 @@ COLOURS = {
     RUNNING: (40, 70, 235),    # red
 }
 PERSON_COLOUR = (170, 170, 170)
+ZONE_COLOUR = (0, 200, 255)          # amber
+ZONE_ACTIVE_COLOUR = (40, 40, 230)   # red while a dog is inside
 
 ANNOUNCE_AFTER = 1.0       # seconds a dog must be tracked before "dog appeared" (filters flicker)
 OBSERVATION_EVERY = 1.0    # seconds between stored observations per dog
@@ -48,6 +52,8 @@ class PipelineSettings:
     max_fps: float = 0.0          # 0 = as fast as the computer allows
     draw_people: bool = True
     draw_trails: bool = True
+    draw_zones: bool = True
+    alerts: AlertRules = field(default_factory=AlertRules)   # shared by all cameras
 
 
 @dataclass
@@ -82,8 +88,11 @@ class Pipeline:
         self.db = db
         self.storage_dir = Path(storage_dir)
         (self.storage_dir / "dogs").mkdir(parents=True, exist_ok=True)
+        (self.storage_dir / "alerts").mkdir(parents=True, exist_ok=True)
 
         self.behaviour = BehaviourTracker()
+        self.alerts = AlertEngine(rules=settings.alerts)
+        self.reload_zones()
         self._records: dict[int, _DogRecord] = {}
         self._model = None
 
@@ -115,6 +124,18 @@ class Pipeline:
         self._flush_all(time.time())
         if self.live.status in ("running", "starting"):
             self.live.status = "stopped"
+
+    @property
+    def camera_key(self) -> str:
+        """Stable name for this camera, used to keep its zones across restarts."""
+        value = self.camera.value
+        if self.camera.kind == "file":
+            value = Path(str(value)).resolve()
+        return f"{self.camera.kind}:{value}"
+
+    def reload_zones(self) -> None:
+        self.alerts.zones = [Zone(z["id"], z["name"], [tuple(p) for p in z["points"]])
+                             for z in self.db.list_zones(self.camera_key)]
 
     # -- results for the API -------------------------------------------------
 
@@ -170,7 +191,9 @@ class Pipeline:
     def _process(self, frame: np.ndarray, result, now: float, infer_fps: float) -> None:
         raw = frame.copy()
         annotated = frame
+        h, w = frame.shape[:2]
         dogs_live, people = [], 0
+        person_boxes, dog_views = [], []
 
         boxes = result.boxes
         if boxes is not None and len(boxes):
@@ -185,6 +208,7 @@ class Pipeline:
                 c, p = int(c), float(p)
                 if c == PERSON_CLASS:
                     people += 1
+                    person_boxes.append(box)
                     if self.settings.draw_people:
                         x1, y1, x2, y2 = map(int, box)
                         cv2.rectangle(annotated, (x1, y1), (x2, y2), PERSON_COLOUR, 1)
@@ -195,17 +219,25 @@ class Pipeline:
                 rec = self._record_for(state, is_new, now)
                 self._store(state, rec, raw, box, now)
                 self._draw_dog(annotated, state, rec, box)
-                dogs_live.append(self._dog_json(state, rec, box))
+                info = self._dog_json(state, rec, box)
+                info["zones"] = [z.name for z in self.alerts.zones_containing(box, w, h)]
+                dogs_live.append(info)
+                dog_views.append(DogView(rec.db_id, box, state.activity))
 
         for gone in self.behaviour.expire(now):
             self._dog_left(gone, now)
 
+        if self.settings.draw_zones:
+            self._draw_zones(annotated, dog_views, w, h)
         self._draw_hud(annotated, len(dogs_live), people, infer_fps)
+
+        for alert in self.alerts.evaluate(now, dog_views, person_boxes, w, h):
+            self._raise_alert(alert, annotated, now)
+
         q = [cv2.IMWRITE_JPEG_QUALITY, self.settings.jpeg_quality]
         ok1, jpg = cv2.imencode(".jpg", annotated, q)
         ok2, raw_jpg = cv2.imencode(".jpg", raw, q)
 
-        h, w = frame.shape[:2]
         with self._lock:
             if ok1:
                 self._jpeg = jpg.tobytes()
@@ -286,7 +318,30 @@ class Pipeline:
         path.parent.mkdir(parents=True, exist_ok=True)
         return rel_path if cv2.imwrite(str(path), crop) else None
 
+    def _raise_alert(self, alert, annotated: np.ndarray, now: float) -> None:
+        self._alert_count = getattr(self, "_alert_count", 0) + 1
+        rel = f"alerts/{self.source_id}_{int(now * 1000)}_{self._alert_count}.jpg"
+        path = self.storage_dir / rel
+        snapshot = rel if cv2.imwrite(str(path), annotated) else None
+        self.db.add_event(self.source_id, alert.type, alert.message, dog_id=alert.dog_id,
+                          snapshot=snapshot, ts=now)
+
     # -- drawing ---------------------------------------------------------------
+
+    def _draw_zones(self, img: np.ndarray, dogs: list[DogView], w: int, h: int) -> None:
+        if not self.alerts.zones:
+            return
+        occupied = {z.id for d in dogs for z in self.alerts.zones_containing(d.box, w, h)}
+        overlay = img.copy()
+        for zone in self.alerts.zones:
+            pts = np.array([(x * w, y * h) for x, y in zone.points], np.int32).reshape(-1, 1, 2)
+            colour = ZONE_ACTIVE_COLOUR if zone.id in occupied else ZONE_COLOUR
+            cv2.fillPoly(overlay, [pts], colour)
+            cv2.polylines(img, [pts], True, colour, 2, cv2.LINE_AA)
+            x, y = pts[:, 0, 0].min(), pts[:, 0, 1].min()
+            cv2.putText(img, zone.name, (int(x) + 4, int(y) + 18), cv2.FONT_HERSHEY_SIMPLEX, 0.55,
+                        colour, 2, cv2.LINE_AA)
+        cv2.addWeighted(overlay, 0.18, img, 0.82, 0, dst=img)
 
     def _draw_dog(self, img: np.ndarray, state: TrackState, rec: _DogRecord, box) -> None:
         colour = COLOURS[state.activity]

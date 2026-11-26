@@ -19,6 +19,7 @@ MINI-PROJECT/
 │   ├── app.py           # API routes, live video stream, WebSocket
 │   ├── pipeline.py      # detection + tracking + behaviour per camera
 │   ├── behaviour.py     # speed and RESTING / WALKING / RUNNING labels
+│   ├── alerts.py        # zone, running-at-person and pack alerts
 │   ├── db.py            # SQLite storage
 │   ├── cameras.py       # CameraSource: webcam / USB phone / Wi-Fi phone / video file
 │   └── camera_test.py   # command-line camera checker
@@ -78,7 +79,7 @@ python -m backend.server --source 0        # or 1 for a USB phone, or a video fi
 python -m backend.server --phone           # phones connect from their browser by scanning a QR code
 ```
 
-Open http://127.0.0.1:8000 for live video with dog boxes, activity labels, saved dogs and events, and http://127.0.0.1:8000/docs for the API. Details: [backend/README.md](backend/README.md).
+Open http://127.0.0.1:8000 for live video with dog boxes, activity labels, saved dogs, events and alerts (draw a zone like a school gate on the video and get an alert with a photo when a dog walks in), and http://127.0.0.1:8000/docs for the API. Details: [backend/README.md](backend/README.md).
 
 ### Testing a camera (laptop, phone over USB or Wi-Fi)
 
@@ -129,7 +130,6 @@ python -m pytest tests -q
 
 - Single `main.py` entry point that also works with video files.
 - Dashboard (e.g. Streamlit) with live feed, charts and dog gallery.
-- Alerts for aggressive or fast-approaching dogs, and zone-based monitoring.
 - Re-identifying the same dog across sessions.
 - Exploratory analysis of the bite dataset (breed, season, vaccination).
 

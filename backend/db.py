@@ -9,10 +9,13 @@ Tables
     dogs          one row per tracked dog (per camera session)
     observations  position / speed / activity, at most one row per dog per second
     events        things that happened: dog appeared, dog left, alerts
+    zones         areas drawn on a camera view; kept per camera (kind:value)
+                  so they survive a server restart
 """
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import threading
 import time
@@ -56,6 +59,16 @@ CREATE TABLE IF NOT EXISTS events (
     snapshot  TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts);
+CREATE INDEX IF NOT EXISTS idx_events_type ON events(type, id);
+
+CREATE TABLE IF NOT EXISTS zones (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    camera_key TEXT    NOT NULL,
+    name       TEXT    NOT NULL,
+    points     TEXT    NOT NULL,           -- JSON [[x, y], ...] as fractions of the frame
+    created    REAL    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_zones_camera ON zones(camera_key);
 """
 
 
@@ -170,12 +183,45 @@ class Database:
         )
 
     def list_events(self, limit: int = 100, type_: str | None = None,
-                    after_id: int = 0) -> list[dict]:
+                    after_id: int = 0, types: tuple[str, ...] | None = None) -> list[dict]:
         sql = "SELECT * FROM events WHERE id > ?"
         params: list = [after_id]
         if type_:
             sql += " AND type = ?"
             params.append(type_)
+        if types:
+            sql += f" AND type IN ({', '.join('?' * len(types))})"
+            params.extend(types)
         sql += " ORDER BY id DESC LIMIT ?"
         params.append(limit)
         return self._read(sql, tuple(params))
+
+    # -- zones -----------------------------------------------------------------
+
+    def add_zone(self, camera_key: str, name: str, points: list) -> int:
+        return self._write(
+            "INSERT INTO zones (camera_key, name, points, created) VALUES (?, ?, ?, ?)",
+            (camera_key, name, json.dumps(points), time.time()),
+        )
+
+    def list_zones(self, camera_key: str | None = None) -> list[dict]:
+        if camera_key is None:
+            rows = self._read("SELECT * FROM zones ORDER BY id")
+        else:
+            rows = self._read("SELECT * FROM zones WHERE camera_key = ? ORDER BY id", (camera_key,))
+        for r in rows:
+            r["points"] = json.loads(r["points"])
+        return rows
+
+    def get_zone(self, zone_id: int) -> dict | None:
+        rows = self._read("SELECT * FROM zones WHERE id = ?", (zone_id,))
+        if not rows:
+            return None
+        rows[0]["points"] = json.loads(rows[0]["points"])
+        return rows[0]
+
+    def delete_zone(self, zone_id: int) -> bool:
+        with self._lock:
+            cur = self._conn.execute("DELETE FROM zones WHERE id = ?", (zone_id,))
+            self._conn.commit()
+            return cur.rowcount > 0

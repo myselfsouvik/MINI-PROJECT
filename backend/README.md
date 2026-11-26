@@ -22,8 +22,9 @@ Options: `--phone` (HTTPS server on port 8443 for phones, see [docs/PHONE_CAMERA
 |---|---|
 | `cameras.py` | `CameraSource`: webcam / USB phone / Wi-Fi phone / video file, always returns the newest frame, auto-reconnects |
 | `behaviour.py` | Per-dog speed in **box heights per second** (independent of distance and resolution) and RESTING / WALKING / RUNNING labels |
-| `pipeline.py` | One thread per camera: YOLO detect + ByteTrack → behaviour → database, draws the annotated frame |
-| `db.py` | SQLite tables `dogs`, `observations` (1 per dog per second), `events` |
+| `pipeline.py` | One thread per camera: YOLO detect + ByteTrack → behaviour → alerts → database, draws the annotated frame |
+| `alerts.py` | Alert rules: dog enters a zone, running dog closing in on a person, 3+ dogs together |
+| `db.py` | SQLite tables `dogs`, `observations` (1 per dog per second), `events`, `zones` |
 | `app.py` | FastAPI routes, MJPEG stream, WebSocket |
 | `server.py` | Command-line entry point |
 | `static/index.html` | Temporary test console (the real dashboard is `frontend/`) |
@@ -51,7 +52,11 @@ Runtime data (database + dog snapshots) is written to `backend/storage/` and is 
 | GET | `/api/dogs/{id}` | one dog + all its observations (for charts) |
 | GET | `/api/events?limit=&type=&after_id=` | `source_added`, `dog_appeared`, `dog_left`, … |
 | GET | `/api/stats/activity?minutes=60` | seconds spent RESTING / WALKING / RUNNING |
-| GET / PATCH | `/api/settings` | `confidence`, `max_fps`, `draw_people`, `draw_trails` |
+| GET / PATCH | `/api/settings` | `confidence`, `max_fps`, `draw_people`, `draw_trails`, `draw_zones`, `alert_zone`, `alert_approach`, `alert_pack`, `pack_size` |
+| GET | `/api/sources/{id}/zones` | zones drawn on this camera `[{id, name, points}]` |
+| POST | `/api/sources/{id}/zones` | body `{name, points: [[x, y], …]}`: 3–20 corners as fractions of the frame (0–1) |
+| DELETE | `/api/zones/{zone_id}` | remove a zone |
+| GET | `/api/alerts?limit=&after_id=` | only alerts, newest first, each with `snapshot_url` (the frame when it happened) |
 | WS | `/ws/live` | every 0.5 s: `{ts, sources: {id: live state}, events: [new events]}` |
 | GET | `/media/dogs/dog_<id>.jpg` | saved dog photo |
 | GET | `/api/phone-link` | `{enabled, urls, qr_url, phones_connected}` |
@@ -66,6 +71,18 @@ CORS is open for the Vite dev server on `http://localhost:5173`.
 - **Other devices** (phones, teammates' laptops on the Wi-Fi) need the access token the server prints when started with `--host 0.0.0.0`. Open `http://<laptop-IP>:8000/?token=<token>`, or send it as an `X-Access-Token` header. Without `--host 0.0.0.0` the server isn't reachable from other devices at all.
 - **Video files** added from the page must be inside `recordings/` (change with `--media-dir`). Files given with `--source` on the command line can be anywhere.
 - **Stream URLs** can't point at link-local or multicast addresses, and other devices can't point a "camera" at the laptop itself. This stops the camera feature being misused to read files or reach other services on the laptop.
+
+## Alerts
+
+| Type | When |
+|---|---|
+| `zone_entered` | A dog's feet (bottom centre of its box) are inside a zone for 3 frames in a row. Once per dog per zone every 30 s. |
+| `dog_running_at_person` | A RUNNING dog gets at least 1 body length closer to a person within about 1 s and is within 4 body lengths. Once per dog every 20 s. |
+| `dog_pack` | 3 or more dogs in view at once (`pack_size`). At most once a minute. |
+
+Alerts are saved as events with a photo in `backend/storage/alerts/`. Zones are stored per camera (webcam number, file path, stream URL or phone name), so they come back after a restart. These are simple, explainable rules on top of the detector; we don't claim to detect "aggression".
+
+To draw a zone on the test page: pick a camera, press **Draw a zone**, click the corners on the video, name it and save.
 
 ## Notes
 
