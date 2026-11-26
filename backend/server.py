@@ -8,6 +8,8 @@ Start the backend server.
     python -m backend.server --phone                  # also let phones connect from their browser (QR code)
     python -m backend.server --host 0.0.0.0           # whole dashboard reachable from the Wi-Fi
                                                       # (prints an access token other devices must use)
+    python -m backend.server --demo --open            # backup demo video + demo zone, opens the browser
+    python -m backend.doctor                          # check this laptop is ready before a demo
 
 Then open http://127.0.0.1:8000
 """
@@ -49,7 +51,17 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--media-dir", default=AppSettings.media_dir,
                    help="folder video files must be in when added from the page (default: recordings/)")
     p.add_argument("--token", help="access token for other devices (default: random when they can connect)")
+    p.add_argument("--demo", action="store_true",
+                   help="also watch the backup demo video (made if missing) with a demo zone")
+    p.add_argument("--open", action="store_true", help="open the dashboard in the browser")
     args = p.parse_args(argv)
+
+    if args.demo:
+        from backend.demo import ensure_demo_video
+
+        demo_video = ensure_demo_video()
+        if str(demo_video) not in args.source:
+            args.source.append(str(demo_video))
 
     reachable_from_network = args.phone or not is_local_client(args.host)
     token = args.token or (new_token() if reachable_from_network else None)
@@ -58,6 +70,8 @@ def main(argv: list[str] | None = None) -> None:
                            phone_port=args.phone_port if args.phone else None)
     Path(args.media_dir).mkdir(parents=True, exist_ok=True)
     app = create_app(settings, initial_sources=args.source)
+    if args.demo:
+        add_demo_zone(app, demo_video)
 
     configs = [uvicorn.Config(app, host=args.host, port=args.port, log_level="warning")]
     print(f"\n  Dashboard: http://127.0.0.1:{args.port}    API docs: http://127.0.0.1:{args.port}/docs")
@@ -84,6 +98,12 @@ def main(argv: list[str] | None = None) -> None:
         print(f"  e.g. http://<this-laptop's-IP>:{args.port}/?token={token}")
     print()
 
+    if args.open:
+        import threading
+        import webbrowser
+
+        threading.Timer(2.0, webbrowser.open, [f"http://127.0.0.1:{args.port}"]).start()
+
     async def serve_all():
         await asyncio.gather(*(uvicorn.Server(c).serve() for c in configs))
 
@@ -91,6 +111,16 @@ def main(argv: list[str] | None = None) -> None:
         asyncio.run(serve_all())
     except KeyboardInterrupt:
         pass
+
+
+def add_demo_zone(app, video: Path) -> None:
+    """Give the demo video a zone (once), so zone alerts show up in the demo."""
+    from backend.demo import DEMO_ZONE
+
+    db = app.state.db
+    key = f"file:{Path(video).resolve()}"
+    if not db.list_zones(key):
+        db.add_zone(key, DEMO_ZONE["name"], DEMO_ZONE["points"])
 
 
 if __name__ == "__main__":

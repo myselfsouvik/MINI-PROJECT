@@ -10,9 +10,13 @@ python -m backend.server --source 1                 # phone over USB (DroidCam /
 python -m backend.server --source recordings/clip.mp4
 python -m backend.server                            # start empty, add cameras from the page
 python -m backend.server --phone                    # + phones connect from their browser via QR code
+python -m backend.server --demo --open              # + backup demo video and demo zone, opens the browser
+python -m backend.doctor                            # check this laptop before a demo (--cameras, --phone)
 ```
 
-Open **http://127.0.0.1:8000** for the test console and **http://127.0.0.1:8000/docs** for interactive API docs.
+`start.bat` (Windows) / `start.sh` run `--open --phone` with the venv activated; extra arguments are passed on (`start.bat --demo`).
+
+Open **http://127.0.0.1:8000** for the dashboard and **http://127.0.0.1:8000/docs** for interactive API docs. Until the React dashboard is built, `/` shows the test console; the test console is always at **/console**.
 
 Options: `--phone` (HTTPS server on port 8443 for phones, see [docs/PHONE_CAMERA.md](../docs/PHONE_CAMERA.md)), `--host 0.0.0.0` (reachable from other devices on the Wi-Fi), `--port`, `--model` (swap in a fine-tuned model), `--conf`, `--max-fps` (save CPU).
 
@@ -33,6 +37,8 @@ Options: `--phone` (HTTPS server on port 8443 for phones, see [docs/PHONE_CAMERA
 | `phone.py` | Wi-Fi address, self-signed HTTPS certificate, QR code |
 | `security.py` | Access token and checks on what can be opened as a camera |
 | `camera_test.py` | Quick camera check without the server |
+| `demo.py` | Makes the backup demo video `recordings/demo_street.mp4` (3 dogs: resting, walking, running) |
+| `doctor.py` | Pre-demo check: Python, packages, detector speed, ports, Wi-Fi, cameras |
 
 Runtime data (database + dog snapshots) is written to `backend/storage/` and is not committed.
 
@@ -74,6 +80,8 @@ Runtime data (database + dog snapshots) is written to `backend/storage/` and is 
 | WS | `/ws/phone?token=&name=` | phone sends JPEG frames (binary); server answers each with `{type: "ack", dogs, people}` |
 
 CORS is open for the Vite dev server on `http://localhost:5173`.
+
+**Serving the dashboard.** After `npm run build` in `frontend/`, the server serves `frontend/dist` at `/` (one command for the demo, no Node needed on demo day). Unknown page paths like `/dogs/12` get `index.html`, so React Router works. Paths under `/api`, `/ws`, `/media` and `/docs` are never served from the build. Other devices can load the dashboard files without the token, but every API call needs it. The page should read `?token=` from its own URL and send it as `X-Access-Token`, like the test console does.
 
 ## Access and safety
 

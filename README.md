@@ -21,6 +21,8 @@ MINI-PROJECT/
 │   ├── behaviour.py     # speed and RESTING / WALKING / RUNNING labels
 │   ├── alerts.py        # zone, running-at-person and pack alerts
 │   ├── features.py      # movement features + trained behaviour classifier
+│   ├── demo.py          # backup demo video (python -m backend.demo)
+│   ├── doctor.py        # pre-demo laptop check (python -m backend.doctor)
 │   ├── db.py            # SQLite storage
 │   ├── cameras.py       # CameraSource: webcam / USB phone / Wi-Fi phone / video file
 │   └── camera_test.py   # command-line camera checker
@@ -41,6 +43,7 @@ MINI-PROJECT/
 ├── data/tabular/
 │   ├── Health_AnimalBites.csv           # Raw dataset (9,003 records)
 │   └── cleaned_animal_bites_dogs.csv    # Output of preprocessing.py
+├── start.bat / start.sh # one-command start (dashboard + phone QR)
 ├── requirements.txt
 └── PLAN.md              # Roadmap and who does what
 ```
@@ -72,6 +75,15 @@ The scripts find the model and data files themselves, so you can run them from a
 | `python legacy/preprocessing.py` | Cleans the bites dataset and writes `data/tabular/cleaned_animal_bites_dogs.csv` |
 
 Press **Q** in the camera window to stop.
+
+### Demo day: one command
+
+```bash
+python -m backend.doctor          # checks Python, packages, model speed, ports, Wi-Fi; says what to fix
+start.bat                         # Windows: double-click. Opens the dashboard, phones can scan the QR code
+start.bat --demo                  # same + backup demo video (3 dogs, demo zone) if no dog shows up
+./start.sh --demo                 # macOS / Linux
+```
 
 ### Backend server (new)
 
