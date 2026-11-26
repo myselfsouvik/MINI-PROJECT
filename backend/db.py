@@ -7,7 +7,8 @@ several camera pipelines can write at once.
 
 Tables
     dogs          one row per tracked dog (per camera session)
-    observations  position / speed / activity, at most one row per dog per second
+    observations  position / speed / activity, at most one row per dog per second;
+                  position (center_x, center_y) is a fraction of the frame, 0..1
     events        things that happened: dog appeared, dog left, alerts
     zones         areas drawn on a camera view; kept per camera (kind:value)
                   so they survive a server restart
@@ -170,6 +171,71 @@ class Database:
         out = {"RESTING": 0, "WALKING": 0, "RUNNING": 0}
         out.update({r["activity"]: r["n"] for r in rows})
         return out
+
+    # -- analytics -------------------------------------------------------------
+    # Observations are ~1 per dog per second, so a count of rows ≈ dog-seconds.
+
+    def _obs_filter(self, since: float, source_id: str | None) -> tuple[str, list]:
+        sql = " FROM observations o JOIN dogs d ON d.id = o.dog_id WHERE o.ts >= ?"
+        params: list = [since]
+        if source_id:
+            sql += " AND d.source_id = ?"
+            params.append(source_id)
+        return sql, params
+
+    def activity_timeline(self, since: float, bucket: float, source_id: str | None = None) -> list[dict]:
+        """Dog-seconds per activity in time buckets of ``bucket`` seconds."""
+        where, params = self._obs_filter(since, source_id)
+        rows = self._read(
+            "SELECT CAST((o.ts - ?) / ? AS INTEGER) AS b, o.activity AS activity, COUNT(*) AS n"
+            + where + " GROUP BY b, o.activity ORDER BY b",
+            tuple([since, bucket] + params),
+        )
+        out: dict[int, dict] = {}
+        for r in rows:
+            item = out.setdefault(r["b"], {"start": since + r["b"] * bucket,
+                                           "RESTING": 0, "WALKING": 0, "RUNNING": 0})
+            item[r["activity"]] = r["n"]
+        return [out[b] for b in sorted(out)]
+
+    def speed_histogram(self, since: float, bin_width: float, max_speed: float,
+                        source_id: str | None = None) -> list[int]:
+        """Counts of observed speeds in bins [0, w), [w, 2w), …; the last bin holds everything above."""
+        bins = max(1, int(round(max_speed / bin_width)))
+        where, params = self._obs_filter(since, source_id)
+        rows = self._read(
+            "SELECT MIN(CAST(o.speed / ? AS INTEGER), ?) AS b, COUNT(*) AS n" + where + " GROUP BY b",
+            tuple([bin_width, bins - 1] + params),
+        )
+        counts = [0] * bins
+        for r in rows:
+            counts[max(0, r["b"])] += r["n"]
+        return counts
+
+    def position_grid(self, since: float, cols: int, rows_: int,
+                      source_id: str | None = None) -> list[list[int]]:
+        """How often a dog was seen in each cell of a cols × rows grid over the frame."""
+        where, params = self._obs_filter(since, source_id)
+        rows = self._read(
+            "SELECT MIN(CAST(o.center_x * ? AS INTEGER), ?) AS cx, MIN(CAST(o.center_y * ? AS INTEGER), ?) AS cy,"
+            " COUNT(*) AS n" + where + " AND o.center_x BETWEEN 0 AND 1 AND o.center_y BETWEEN 0 AND 1"
+            " GROUP BY cx, cy",
+            tuple([cols, cols - 1, rows_, rows_ - 1] + params),
+        )
+        grid = [[0] * cols for _ in range(rows_)]
+        for r in rows:
+            grid[r["cy"]][r["cx"]] += r["n"]
+        return grid
+
+    def summary(self, since: float) -> dict:
+        dogs = self._read("SELECT COUNT(*) AS n FROM dogs WHERE last_seen >= ? "
+                          "AND last_seen - first_seen >= 1", (since,))[0]["n"]
+        types = self._read("SELECT type, COUNT(*) AS n FROM events WHERE ts >= ? GROUP BY type", (since,))
+        busiest = self._read(
+            "SELECT CAST(strftime('%H', ts, 'unixepoch', 'localtime') AS INTEGER) AS hour, COUNT(*) AS n "
+            "FROM observations WHERE ts >= ? GROUP BY hour ORDER BY n DESC LIMIT 1", (since,))
+        return {"dogs_seen": dogs, "events": {r["type"]: r["n"] for r in types},
+                "busiest_hour": busiest[0]["hour"] if busiest else None}
 
     # -- events ----------------------------------------------------------------
 

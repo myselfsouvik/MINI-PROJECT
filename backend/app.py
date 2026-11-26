@@ -23,6 +23,12 @@ Main endpoints (all JSON unless noted)
     POST   /api/sources/{id}/zones            {"name": "School gate", "points": [[x, y], ...]} (0..1)
     DELETE /api/zones/{zone_id}
     GET    /api/stats/activity                seconds per activity
+    GET    /api/stats/timeline                activity over time (for a stacked chart)
+    GET    /api/stats/speeds                  speed histogram
+    GET    /api/stats/heatmap                 where dogs spend time (grid over the frame)
+    GET    /api/stats/summary                 dogs seen, events by type, busiest hour
+    GET    /api/uploads  POST /api/uploads    videos in the media folder / upload one
+    GET    /api/models   POST /api/models/select   which model is loaded, switch model
     GET    /api/settings  PATCH /api/settings detection confidence etc.
     WS     /ws/live                           pushes live status + new events twice a second
     GET    /api/phone-link                    link + QR code for phones (server started with --phone)
@@ -38,6 +44,8 @@ from __future__ import annotations
 
 import asyncio
 import itertools
+import json
+import re
 import threading
 import time
 from contextlib import asynccontextmanager
@@ -54,7 +62,7 @@ from backend.alerts import ALERT_TYPES
 from backend.cameras import PHONE_APPS, CameraSource, PushCameraSource, list_local_cameras, phone_url
 from backend.phone import lan_ips, qr_svg
 from backend.db import Database
-from backend.pipeline import Pipeline, PipelineSettings
+from backend.pipeline import Pipeline, PipelineSettings, class_ids
 from backend.security import check_source, is_local_client, token_ok
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -73,10 +81,15 @@ class AppSettings:
     access_token: str | None = None
     # Port of the HTTPS server for phones (None = phone browser connection off).
     phone_port: int | None = None
+    # Models that can be picked from the dashboard (weights files in this folder).
+    models_dir: str = str(ROOT / "models")
 
 
 PUBLIC_PAGES = {"/", "/phone"}   # pages with no data in them; the API still needs the token
 MAX_PHONES = 4
+VIDEO_TYPES = {".mp4", ".avi", ".mov", ".mkv", ".webm", ".m4v"}
+MODEL_TYPES = {".pt", ".onnx"}
+MAX_UPLOAD_MB = 500
 
 
 # ----------------------------------------------------------------------------
@@ -106,6 +119,10 @@ class SettingsPatch(BaseModel):
     alert_approach: bool | None = None
     alert_pack: bool | None = None
     pack_size: int | None = Field(None, ge=2, le=20)
+
+
+class SelectModel(BaseModel):
+    name: str = Field(..., examples=["yolo11n.pt"])
 
 
 class AddZone(BaseModel):
@@ -230,7 +247,7 @@ def create_app(settings: AppSettings | None = None, initial_sources: list[str] |
                 await asyncio.to_thread(manager.stop_all)
                 db.close()
 
-    app = FastAPI(title="Street Dog Monitoring System", version="0.4.0", lifespan=lifespan)
+    app = FastAPI(title="Street Dog Monitoring System", version="0.5.0", lifespan=lifespan)
     app.state.manager = manager
     app.state.db = db
 
@@ -508,10 +525,150 @@ def create_app(settings: AppSettings | None = None, initial_sources: list[str] |
             a["snapshot_url"] = f"/media/{a['snapshot']}" if a["snapshot"] else None
         return alerts
 
+    @app.get("/api/stats/timeline")
+    def stats_timeline(minutes: float = Query(60, gt=0, le=60 * 24 * 30),
+                       bucket: float = Query(60, ge=5), source_id: str | None = None):
+        """Dog-seconds per activity in each time bucket (bucket = seconds)."""
+        if minutes * 60 / bucket > 2000:
+            raise HTTPException(400, "Too many buckets: use a bigger bucket for this time range.")
+        since = time.time() - minutes * 60
+        return {"minutes": minutes, "bucket": bucket,
+                "buckets": db.activity_timeline(since, bucket, source_id)}
+
+    @app.get("/api/stats/speeds")
+    def stats_speeds(minutes: float = Query(60, gt=0), bin_width: float = Query(0.25, gt=0),
+                     max_speed: float = Query(4.0, gt=0, le=20), source_id: str | None = None):
+        """Histogram of speeds (box heights per second). The last bin is 'max_speed and above'."""
+        if max_speed / bin_width > 200:
+            raise HTTPException(400, "Too many bins: use a bigger bin_width.")
+        since = time.time() - minutes * 60
+        counts = db.speed_histogram(since, bin_width, max_speed, source_id)
+        return {"bin_width": bin_width,
+                "edges": [round(i * bin_width, 3) for i in range(len(counts) + 1)],
+                "counts": counts}
+
+    @app.get("/api/stats/heatmap")
+    def stats_heatmap(minutes: float = Query(60, gt=0), cols: int = Query(16, ge=2, le=64),
+                      rows: int = Query(9, ge=2, le=64), source_id: str | None = None):
+        """Dog-seconds per cell of a grid over the camera view (row 0 = top of the frame)."""
+        since = time.time() - minutes * 60
+        grid = db.position_grid(since, cols, rows, source_id)
+        return {"cols": cols, "rows": rows, "max": max(max(r) for r in grid), "grid": grid}
+
+    @app.get("/api/stats/summary")
+    def stats_summary(minutes: float = Query(60 * 24, gt=0)):
+        since = time.time() - minutes * 60
+        out = db.summary(since)
+        out["alerts"] = sum(n for t, n in out["events"].items() if t in ALERT_TYPES)
+        out["activity_seconds"] = db.activity_summary(since)
+        out["minutes"] = minutes
+        return out
+
     @app.get("/api/stats/activity")
     def activity_stats(minutes: float = Query(60, gt=0)):
         since = time.time() - minutes * 60
         return {"minutes": minutes, "seconds": db.activity_summary(since)}
+
+    # -- uploaded videos ---------------------------------------------------------
+
+    media_dir = Path(settings.media_dir)
+
+    @app.get("/api/uploads")
+    def list_videos():
+        """Videos in the media folder, ready to add as a source."""
+        if not media_dir.exists():
+            return []
+        files = [f for f in media_dir.rglob("*") if f.is_file() and f.suffix.lower() in VIDEO_TYPES]
+        files.sort(key=lambda f: -f.stat().st_mtime)
+        return [{"name": f.name, "source": str(f), "size_mb": round(f.stat().st_size / 1e6, 1),
+                 "modified": f.stat().st_mtime} for f in files]
+
+    @app.post("/api/uploads", status_code=201)
+    async def upload_video(request: Request, filename: str = Query(..., max_length=120),
+                           start: bool = False, loop: bool = True):
+        """
+        Upload a video. Send the file itself as the request body (not a form), e.g.
+        fetch("/api/uploads?filename=clip.mp4&start=1", {method: "POST", body: file}).
+        With start=1 it is added as a camera source straight away.
+        """
+        name = re.sub(r"[^A-Za-z0-9._-]+", "_", Path(filename).name).strip("._") or "video.mp4"
+        if Path(name).suffix.lower() not in VIDEO_TYPES:
+            raise HTTPException(400, f"Only video files: {', '.join(sorted(VIDEO_TYPES))}")
+        folder = media_dir / "uploads"
+        folder.mkdir(parents=True, exist_ok=True)
+        target, n = folder / name, 1
+        while target.exists():
+            target = folder / f"{Path(name).stem}_{n}{Path(name).suffix}"
+            n += 1
+        size, limit = 0, MAX_UPLOAD_MB * 1_000_000
+        try:
+            with open(target, "wb") as f:
+                async for chunk in request.stream():
+                    size += len(chunk)
+                    if size > limit:
+                        raise HTTPException(413, f"Video is bigger than {MAX_UPLOAD_MB} MB.")
+                    f.write(chunk)
+        except BaseException:
+            target.unlink(missing_ok=True)
+            raise
+        if size == 0:
+            target.unlink(missing_ok=True)
+            raise HTTPException(400, "The upload was empty.")
+        out = {"name": target.name, "source": str(target), "size_mb": round(size / 1e6, 1)}
+        if start:
+            try:
+                sid = await asyncio.to_thread(manager.add, str(target), Path(filename).name, loop)
+            except (ValueError, RuntimeError) as e:
+                target.unlink(missing_ok=True)
+                raise HTTPException(400, f"That file can't be opened as a video: {e}")
+            out["source_id"] = sid
+        return out
+
+    # -- models -----------------------------------------------------------------
+
+    models_dir = Path(settings.models_dir)
+
+    def model_info(path: Path) -> dict:
+        info = {"name": path.name, "size_mb": round(path.stat().st_size / 1e6, 1), "metrics": None}
+        # Training scripts can save test results as <model>.json next to the weights.
+        meta = path.with_suffix(".json")
+        if meta.exists():
+            try:
+                info["metrics"] = json.loads(meta.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                pass
+        return info
+
+    @app.get("/api/models")
+    def list_models():
+        current = Path(manager.pipeline_settings.model_path)
+        files = sorted(f for f in models_dir.glob("*") if f.suffix.lower() in MODEL_TYPES) \
+            if models_dir.exists() else []
+        return {
+            "current": current.name,
+            "current_info": model_info(current) if current.exists() else None,
+            "available": [model_info(f) | {"current": f.resolve() == current.resolve()} for f in files],
+        }
+
+    @app.post("/api/models/select")
+    def select_model(body: SelectModel):
+        path = models_dir / Path(body.name).name          # only files inside models/
+        if path.suffix.lower() not in MODEL_TYPES or not path.is_file():
+            raise HTTPException(404, f"No model {body.name!r} in {models_dir.name}/")
+        from ultralytics import YOLO
+        try:
+            first = YOLO(str(path))
+            dog, person = class_ids(first.names)
+        except Exception as e:
+            raise HTTPException(400, f"Can't use {path.name}: {e}")
+        manager.pipeline_settings.model_path = str(path)
+        # Each camera needs its own copy: the tracker's state lives inside the model.
+        pipes = list(manager.pipelines.values())
+        for i, pipe in enumerate(pipes):
+            pipe.use_model(first if i == 0 else YOLO(str(path)))
+        db.add_event("system", "model_changed", f"Switched detector to {path.name}")
+        return {"current": path.name, "dog_class": dog, "person_class": person,
+                "cameras_updated": len(pipes)}
 
     # -- websocket -------------------------------------------------------------
 

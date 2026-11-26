@@ -25,8 +25,23 @@ from backend.behaviour import RESTING, RUNNING, WALKING, BehaviourTracker, Track
 from backend.cameras import CameraSource
 from backend.db import Database
 
-PERSON_CLASS = 0
+PERSON_CLASS = 0     # COCO numbers, used by the stock model
 DOG_CLASS = 16
+
+
+def class_ids(names: dict[int, str]) -> tuple[int, int | None]:
+    """
+    Find the dog and person class numbers in a model. The stock COCO model has
+    dog = 16, person = 0; our fine-tuned model may have only "dog" (= 0).
+    """
+    by_name = {str(n).lower(): i for i, n in names.items()}
+    dog = by_name.get("dog")
+    if dog is None:
+        if len(names) == 1:                 # single-class model: that class is the dog
+            dog = next(iter(names))
+        else:
+            raise ValueError(f"Model has no 'dog' class (classes: {list(names.values())[:10]})")
+    return int(dog), by_name.get("person")
 
 # BGR colours per activity
 COLOURS = {
@@ -95,6 +110,8 @@ class Pipeline:
         self.reload_zones()
         self._records: dict[int, _DogRecord] = {}
         self._model = None
+        self._dog_cls, self._person_cls = DOG_CLASS, PERSON_CLASS
+        self._pending_model = None   # (model, dog_cls, person_cls) waiting to be swapped in
 
         self._lock = threading.Lock()
         self._jpeg: bytes | None = None
@@ -110,6 +127,7 @@ class Pipeline:
         from ultralytics import YOLO   # imported here so the module loads fast
 
         self._model = YOLO(self.settings.model_path)
+        self._dog_cls, self._person_cls = class_ids(self._model.names)
         if not self.camera.is_running:
             self.camera.start()
         self._thread = threading.Thread(target=self._run, name=f"pipe-{self.source_id}", daemon=True)
@@ -136,6 +154,22 @@ class Pipeline:
     def reload_zones(self) -> None:
         self.alerts.zones = [Zone(z["id"], z["name"], [tuple(p) for p in z["points"]])
                              for z in self.db.list_zones(self.camera_key)]
+
+    def use_model(self, model) -> None:
+        """Switch to another (already loaded) YOLO model at the next frame."""
+        dog, person = class_ids(model.names)
+        self._pending_model = (model, dog, person)
+        if self._thread is None or not self._thread.is_alive():
+            self._swap_model(time.time())
+
+    def _swap_model(self, now: float) -> None:
+        model, dog, person = self._pending_model
+        self._pending_model = None
+        # Track IDs restart with the new model's tracker, so close every current dog.
+        for state in list(self.behaviour.tracks.values()):
+            self._dog_left(state, now)
+        self.behaviour = BehaviourTracker()
+        self._model, self._dog_cls, self._person_cls = model, dog, person
 
     # -- results for the API -------------------------------------------------
 
@@ -168,10 +202,13 @@ class Pipeline:
                         break
                     continue
                 last_id = self.camera.frame_id
+                if self._pending_model is not None:
+                    self._swap_model(time.time())
 
                 t0 = time.perf_counter()
+                wanted = [c for c in (self._person_cls, self._dog_cls) if c is not None]
                 result = self._model.track(
-                    frame, persist=True, classes=[PERSON_CLASS, DOG_CLASS],
+                    frame, persist=True, classes=wanted,
                     conf=self.settings.confidence, tracker=self.settings.tracker, verbose=False,
                 )[0]
                 dt = time.perf_counter() - t0
@@ -206,12 +243,14 @@ class Pipeline:
                 # Plain Python numbers: numpy types break JSON and SQLite.
                 box = tuple(float(v) for v in box)
                 c, p = int(c), float(p)
-                if c == PERSON_CLASS:
+                if c == self._person_cls:
                     people += 1
                     person_boxes.append(box)
                     if self.settings.draw_people:
                         x1, y1, x2, y2 = map(int, box)
                         cv2.rectangle(annotated, (x1, y1), (x2, y2), PERSON_COLOUR, 1)
+                    continue
+                if c != self._dog_cls:
                     continue
                 if tid is None:      # tracker hasn't confirmed this dog yet
                     continue
@@ -281,7 +320,11 @@ class Pipeline:
 
         if now - rec.last_obs >= OBSERVATION_EVERY:
             rec.last_obs = now
-            self.db.add_observation(rec.db_id, now, state.center, state.speed,
+            # Positions are stored as fractions of the frame (0..1) so the
+            # heat map works the same for every camera resolution.
+            fh, fw = raw.shape[:2]
+            centre = (round(state.center[0] / fw, 4), round(state.center[1] / fh, 4))
+            self.db.add_observation(rec.db_id, now, centre, state.speed,
                                     state.activity, state.confidence)
             self.db.update_dog(rec.db_id, last_seen=now, seconds_in=state.seconds_in,
                                max_speed=rec.max_speed, best_confidence=best, snapshot=snapshot)
