@@ -156,6 +156,12 @@
     <div class="panel">
       <h2>Detection confidence: <span id="confVal"></span></h2>
       <input type="range" id="conf" min="0.1" max="0.9" step="0.05" style="width:100%">
+      <h2 style="margin-top:10px">Detector image size</h2>
+      <select id="imgsz" style="width:100%">
+        <option value="320">320 · fastest, misses far dogs</option><option value="416">416 · faster</option>
+        <option value="512">512</option><option value="640">640 · default, most accurate</option>
+      </select>
+      <p class="muted" style="margin:6px 0 0">Laptop too slow? Try a smaller size, or run <code>python -m backend.benchmark</code>.</p>
     </div>
     <div class="panel">
       <h2>Activity, last hour</h2>
@@ -369,7 +375,11 @@ $("phoneBtn").onclick = async (e) => {
 async function loadSettings() {
   const s = await api("/api/settings");
   $("conf").value = s.confidence; $("confVal").textContent = s.confidence.toFixed(2);
+  if (![...$("imgsz").options].some(o => Number(o.value) === s.imgsz))
+    $("imgsz").add(new Option(String(s.imgsz), s.imgsz));
+  $("imgsz").value = s.imgsz;
 }
+$("imgsz").onchange = () => api("/api/settings", { method: "PATCH", body: JSON.stringify({ imgsz: Number($("imgsz").value) }) });
 $("conf").oninput = () => $("confVal").textContent = Number($("conf").value).toFixed(2);
 $("conf").onchange = () => api("/api/settings", { method: "PATCH", body: JSON.stringify({ confidence: Number($("conf").value) }) });
 

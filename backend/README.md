@@ -18,7 +18,7 @@ python -m backend.doctor                            # check this laptop before a
 
 Open **http://127.0.0.1:8000** for the dashboard and **http://127.0.0.1:8000/docs** for interactive API docs. Until the React dashboard is built, `/` shows the test console; the test console is always at **/console**.
 
-Options: `--phone` (HTTPS server on port 8443 for phones, see [docs/PHONE_CAMERA.md](../docs/PHONE_CAMERA.md)), `--host 0.0.0.0` (reachable from other devices on the Wi-Fi), `--port`, `--model` (swap in a fine-tuned model), `--conf`, `--max-fps` (save CPU), `--keep-days 7` (auto-delete data older than 7 days, see *Storage* below).
+Options: `--phone` (HTTPS server on port 8443 for phones, see [docs/PHONE_CAMERA.md](../docs/PHONE_CAMERA.md)), `--host 0.0.0.0` (reachable from other devices on the Wi-Fi), `--port`, `--model` (swap in a fine-tuned model), `--conf`, `--max-fps` (save CPU), `--imgsz` (detector image size, see *Speed* below), `--keep-days 7` (auto-delete data older than 7 days, see *Storage* below).
 
 ## Files
 
@@ -27,6 +27,7 @@ Options: `--phone` (HTTPS server on port 8443 for phones, see [docs/PHONE_CAMERA
 | `cameras.py` | `CameraSource`: webcam / USB phone / Wi-Fi phone / video file, always returns the newest frame, auto-reconnects |
 | `behaviour.py` | Per-dog speed in **box heights per second** (independent of distance and resolution) and RESTING / WALKING / RUNNING labels |
 | `pipeline.py` | One thread per camera: YOLO detect + ByteTrack → behaviour → alerts → database, draws the annotated frame |
+| `benchmark.py` | Measures speed and dogs found at several detector image sizes on this computer and recommends one |
 | `report.py` | Session report: one printable HTML page (summary, activity, heat map, speeds, alerts with photos, dogs, model results) |
 | `housekeeping.py` | Storage use and cleanup of old dogs, positions, events and their photos/clips (manual or automatic) |
 | `insights.py` | Charts for the Insights page from the animal-bites dataset (cleans dates and breed spellings, cached) |
@@ -81,7 +82,7 @@ Runtime data (database + dog snapshots) is written to `backend/storage/` and is 
 | GET | `/api/models` | `{current, current_info, available: [{name, size_mb, metrics, current}]}` |
 | POST | `/api/models/select` | body `{name}`: switch every camera to another model from `models/` |
 | POST | `/api/models/behaviour/reload` | load `models/behaviour.joblib` again after training; `GET /api/models` → `behaviour` shows labels and test results |
-| GET / PATCH | `/api/settings` | `confidence`, `max_fps`, `draw_people`, `draw_trails`, `draw_zones`, `alert_zone`, `alert_approach`, `alert_pack`, `pack_size`, `use_behaviour_model` (+ read-only `behaviour_model_loaded`), `alert_clips` |
+| GET / PATCH | `/api/settings` | `confidence`, `max_fps`, `draw_people`, `draw_trails`, `draw_zones`, `alert_zone`, `alert_approach`, `alert_pack`, `pack_size`, `use_behaviour_model` (+ read-only `behaviour_model_loaded`), `alert_clips`, `imgsz` (160–1280, multiple of 32) |
 | GET | `/api/sources/{id}/zones` | zones drawn on this camera `[{id, name, points}]` |
 | POST | `/api/sources/{id}/zones` | body `{name, points: [[x, y], …]}`: 3–20 corners as fractions of the frame (0–1) |
 | DELETE | `/api/zones/{zone_id}` | remove a zone |
@@ -114,6 +115,27 @@ CORS is open for the Vite dev server on `http://localhost:5173`.
 Alerts are saved as events with a photo in `backend/storage/alerts/`. Zones are stored per camera (webcam number, file path, stream URL or phone name), so they come back after a restart. These are simple, explainable rules on top of the detector; we don't claim to detect "aggression".
 
 To draw a zone on the test page: pick a camera, press **Draw a zone**, click the corners on the video, name it and save.
+
+## Speed
+
+The detector shrinks each frame to `imgsz` (default 640) before looking for dogs. Smaller is faster but misses small and far-away dogs. On the demo video:
+
+| Image size | Detector FPS (this laptop) | Dogs found vs 640 |
+|---|---|---|
+| 320 | ~80 | 0% |
+| 416 | ~64 | 43% |
+| 512 | ~56 | 75% |
+| 640 | ~42 | 100% |
+
+So keep 640 unless the laptop is really slow. To decide on another computer:
+
+```bash
+python -m backend.benchmark                    # or --video recordings/captures/<street clip>.mp4
+```
+
+It recommends the largest size that reaches `--target-fps` (default 10) and still finds at least 90% of the dogs. Use it with `start.bat --imgsz 416` or change it live in the console (*Detector image size*). `python -m backend.doctor` points here when the laptop is slow.
+
+PyTorch runs the detector on one CPU thread per camera (Ultralytics' default). We measured it: for this small model, more threads were *slower* (42 fps on 1 thread, 28 on 14, 19 on 18), and one thread each leaves cores free for more cameras.
 
 ## Session report
 
