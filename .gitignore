@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.ipynb_checkpoints/
+
+# Secrets / local config
+.env
+*.pem
+*.key
+
+# Training outputs, datasets and recordings (keep these on the shared Google Drive)
+runs/
+datasets/
+training/**/data/
+recordings/
+*.mp4
+*.avi
+*.mov
+
+# Model weights: only the final ones in models/ are committed
+*.pt
+*.onnx
+!models/*.pt
+
+# Runtime data created by the dashboard
+backend/storage/
+*.db
+*.sqlite3
+
+# Frontend
+node_modules/
+frontend/dist/
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

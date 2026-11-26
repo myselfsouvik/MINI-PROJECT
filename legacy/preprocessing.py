@@ -42,11 +42,16 @@
 import pandas as pd
 from sklearn.model_selection import train_test_split
 
+# Paths work no matter which folder you run the script from
+from pathlib import Path
+HERE = Path(__file__).resolve().parent
+ROOT = HERE.parent
+
 # ==========================================
 # 1. LOAD DATASET
 # ==========================================
 
-file_path = "data/tabular/Health_AnimalBites.csv"
+file_path = ROOT / "data" / "tabular" / "Health_AnimalBites.csv"
 
 df = pd.read_csv(file_path)
 
@@ -145,7 +150,7 @@ if positive < 2:
 # ==========================================
 
 df.to_csv(
-    "data/tabular/cleaned_animal_bites_dogs.csv",
+    ROOT / "data" / "tabular" / "cleaned_animal_bites_dogs.csv",
     index=False
 )
 
