@@ -63,7 +63,7 @@ The test split is **by clip**: rows from the same clip are almost identical, so 
 **4. Use it.** The model is saved as `models/behaviour.joblib`, and the results as `models/behaviour.json`. Then either:
 
 - restart the server, or
-- click **Behaviour classifier** on the test page, or
+- tick **Use the trained behaviour classifier** on the console's Settings page, or
 - call `POST /api/models/behaviour/reload`.
 
 The live view then shows the classifier's label and confidence for each dog. The checkbox turns it off again, back to the speed thresholds, so the two can be compared in the demo.
