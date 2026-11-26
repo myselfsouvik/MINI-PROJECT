@@ -64,7 +64,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -75,6 +75,7 @@ from backend.db import Database
 from backend.features import BehaviourModel
 from backend.housekeeping import MIN_DAYS, AutoCleaner, cleanup as clean_storage, usage as storage_usage
 from backend.insights import InsightsCache
+from backend.report import build_report
 from backend.pipeline import Pipeline, PipelineSettings, class_ids
 from backend.security import check_source, is_local_client, token_ok
 
@@ -429,6 +430,22 @@ def create_app(settings: AppSettings | None = None, initial_sources: list[str] |
         finally:
             if sid in manager.pipelines:
                 await asyncio.to_thread(manager.remove, sid)
+
+    # -- session report ----------------------------------------------------------
+
+    @app.get("/api/report", response_class=HTMLResponse)
+    def session_report(minutes: float = Query(60, gt=0, le=60 * 24 * 365), download: bool = False):
+        """One printable HTML page about the last N minutes (photos embedded, works offline)."""
+        now = time.time()
+        current = Path(manager.pipeline_settings.model_path)
+        models = {"Detector": model_info(current) if current.exists() else {"name": current.name},
+                  "Behaviour classifier": behaviour_info() if Path(settings.behaviour_model_path).is_file() else None}
+        html = build_report(db, storage, now - minutes * 60, now, models=models)
+        headers = {}
+        if download:
+            stamp = datetime.now().strftime("%Y%m%d_%H%M")
+            headers["Content-Disposition"] = f'attachment; filename="dogwatch_report_{stamp}.html"'
+        return HTMLResponse(html, headers=headers)
 
     # -- storage ---------------------------------------------------------------
 

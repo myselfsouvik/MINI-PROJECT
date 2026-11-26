@@ -277,6 +277,14 @@ class Database:
             (ts or time.time(), source_id, type_, dog_id, message, snapshot),
         )
 
+    def events_since(self, since: float, types: tuple[str, ...] | None = None, limit: int = 100) -> list[dict]:
+        """Events at or after `since`, newest first (optionally only some types)."""
+        sql, params = "SELECT * FROM events WHERE ts >= ?", [since]
+        if types:
+            sql += f" AND type IN ({', '.join('?' * len(types))})"
+            params.extend(types)
+        return self._read(sql + " ORDER BY ts DESC LIMIT ?", tuple(params + [limit]))
+
     def set_event_clip(self, event_id: int, clip: str) -> None:
         self._write("UPDATE events SET clip = ? WHERE id = ?", (clip, event_id))
 

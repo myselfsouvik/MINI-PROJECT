@@ -26,6 +26,8 @@ recordings/
 !models/*.pt
 
 # Runtime data created by the dashboard
+session_report*.html
+dogwatch_report_*.html
 backend/storage/
 *.db
 *.sqlite3
