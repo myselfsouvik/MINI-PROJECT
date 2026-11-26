@@ -89,6 +89,7 @@ class AppSettings:
     storage_dir: str = str(ROOT / "backend" / "storage")
     confidence: float = 0.5
     max_fps: float = 0.0
+    imgsz: int = 640               # detector input size (multiple of 32); see backend/benchmark.py
     # Video files added through the API must be inside this folder.
     media_dir: str = str(ROOT / "recordings")
     # Other devices on the network must send this token. None = only this computer.
@@ -139,6 +140,7 @@ class AddPhone(BaseModel):
 class SettingsPatch(BaseModel):
     confidence: float | None = Field(None, ge=0.05, le=0.95)
     max_fps: float | None = Field(None, ge=0)
+    imgsz: int | None = Field(None, ge=160, le=1280, multiple_of=32)
     draw_people: bool | None = None
     draw_trails: bool | None = None
     draw_zones: bool | None = None
@@ -184,6 +186,7 @@ class SourceManager:
         self.storage = Path(settings.storage_dir)
         self.pipeline_settings = PipelineSettings(
             model_path=settings.model_path, confidence=settings.confidence, max_fps=settings.max_fps,
+            imgsz=settings.imgsz,
             behaviour_model=BehaviourModel.load_if_exists(settings.behaviour_model_path))
         self.pipelines: dict[str, Pipeline] = {}
         self._ids = itertools.count(1)
@@ -477,6 +480,7 @@ def create_app(settings: AppSettings | None = None, initial_sources: list[str] |
     def get_settings():
         ps = manager.pipeline_settings
         return {"model": Path(ps.model_path).name, "confidence": ps.confidence, "max_fps": ps.max_fps,
+                "imgsz": ps.imgsz,
                 "draw_people": ps.draw_people, "draw_trails": ps.draw_trails,
                 "draw_zones": ps.draw_zones, "alert_zone": ps.alerts.zone,
                 "alert_approach": ps.alerts.approach, "alert_pack": ps.alerts.pack,

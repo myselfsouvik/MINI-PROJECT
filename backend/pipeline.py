@@ -71,6 +71,7 @@ class PipelineSettings:
     tracker: str = "bytetrack.yaml"
     jpeg_quality: int = 80
     max_fps: float = 0.0          # 0 = as fast as the computer allows
+    imgsz: int = 640              # detector input size; smaller = faster, misses small/far dogs sooner
     draw_people: bool = True
     draw_trails: bool = True
     draw_zones: bool = True
@@ -258,7 +259,8 @@ class Pipeline:
                 wanted = [c for c in (self._person_cls, self._dog_cls) if c is not None]
                 result = self._model.track(
                     frame, persist=True, classes=wanted,
-                    conf=self.settings.confidence, tracker=self.settings.tracker, verbose=False,
+                    conf=self.settings.confidence, tracker=self.settings.tracker, imgsz=self.settings.imgsz,
+                    verbose=False,
                 )[0]
                 dt = time.perf_counter() - t0
                 infer_fps = (1 / dt) if infer_fps == 0 else 0.85 * infer_fps + 0.15 * (1 / max(dt, 1e-6))

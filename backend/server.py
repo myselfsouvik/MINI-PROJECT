@@ -48,6 +48,9 @@ def main(argv: list[str] | None = None) -> None:
                    help="trained behaviour classifier (.joblib); used only if the file exists")
     p.add_argument("--conf", type=float, default=0.5, help="detection confidence (default 0.5)")
     p.add_argument("--max-fps", type=float, default=0.0, help="limit detector FPS to save CPU (0 = no limit)")
+    p.add_argument("--imgsz", type=int, default=640,
+                   help="detector image size, a multiple of 32 (default 640; 416 or 320 on slow laptops, "
+                        "see python -m backend.benchmark)")
     p.add_argument("--media-dir", default=AppSettings.media_dir,
                    help="folder video files must be in when added from the page (default: recordings/)")
     p.add_argument("--token", help="access token for other devices (default: random when they can connect)")
@@ -65,11 +68,13 @@ def main(argv: list[str] | None = None) -> None:
         if str(demo_video) not in args.source:
             args.source.append(str(demo_video))
 
+    if not 160 <= args.imgsz <= 1280 or args.imgsz % 32:
+        p.error("--imgsz must be a multiple of 32 between 160 and 1280")
     if args.keep_days is not None and args.keep_days < 1 / 24:
         p.error("--keep-days must be at least 0.042 (one hour)")
     reachable_from_network = args.phone or not is_local_client(args.host)
     token = args.token or (new_token() if reachable_from_network else None)
-    settings = AppSettings(model_path=args.model, behaviour_model_path=args.behaviour_model, confidence=args.conf, max_fps=args.max_fps,
+    settings = AppSettings(model_path=args.model, behaviour_model_path=args.behaviour_model, confidence=args.conf, max_fps=args.max_fps, imgsz=args.imgsz,
                            media_dir=args.media_dir, access_token=token,
                            phone_port=args.phone_port if args.phone else None, keep_days=args.keep_days)
     Path(args.media_dir).mkdir(parents=True, exist_ok=True)

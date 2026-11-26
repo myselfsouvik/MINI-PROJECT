@@ -95,8 +95,9 @@ def check_model(path: Path, speed_test: bool = True) -> list[Check]:
             checks.append(Check("Speed", OK, f"{fps:.0f} frames/s on this laptop"))
         else:
             checks.append(Check("Speed", WARN, f"only {fps:.1f} frames/s",
-                                "Plug in the charger and close other apps; or start with --max-fps 5. "
-                                "An ONNX/OpenVINO export (training/detector) is faster on CPU."))
+                                "Plug in the charger and close other apps. Then run python -m backend.benchmark: "
+                                "it measures smaller --imgsz values (faster, but they miss far-away dogs) and "
+                                "recommends one. --max-fps 5 also lowers the CPU load."))
     return checks
 
 
