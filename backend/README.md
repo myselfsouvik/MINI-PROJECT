@@ -29,7 +29,7 @@ Options: `--phone` (HTTPS server on port 8443 for phones, see [docs/PHONE_CAMERA
 | `pipeline.py` | One thread per camera: YOLO detect + ByteTrack → behaviour → alerts → database, draws the annotated frame |
 | `features.py` | Movement features for the behaviour classifier, and loading `models/behaviour.joblib` |
 | `alerts.py` | Alert rules: dog enters a zone, running dog closing in on a person, 3+ dogs together |
-| `db.py` | SQLite tables `dogs`, `observations` (1 per dog per second), `events`, `zones` |
+| `db.py` | SQLite tables `dogs`, `observations` (1 per dog per second), `events` (with `snapshot` and `clip`), `zones` |
 | `app.py` | FastAPI routes, MJPEG stream, WebSocket |
 | `server.py` | Command-line entry point |
 | `static/index.html` | Temporary test console (the real dashboard is `frontend/`) |
@@ -37,6 +37,7 @@ Options: `--phone` (HTTPS server on port 8443 for phones, see [docs/PHONE_CAMERA
 | `phone.py` | Wi-Fi address, self-signed HTTPS certificate, QR code |
 | `security.py` | Access token and checks on what can be opened as a camera |
 | `camera_test.py` | Quick camera check without the server |
+| `recording.py` | Saves video at real speed: manual recordings (`.mp4`) and alert clips (`.webm`, plays in the browser) |
 | `demo.py` | Makes the backup demo video `recordings/demo_street.mp4` (3 dogs: resting, walking, running) |
 | `doctor.py` | Pre-demo check: Python, packages, detector speed, ports, Wi-Fi, cameras |
 
@@ -63,16 +64,20 @@ Runtime data (database + dog snapshots) is written to `backend/storage/` and is 
 | GET | `/api/stats/speeds?minutes=60&bin_width=0.25&max_speed=4&source_id=` | `{edges, counts}` speed histogram; last bin = max_speed and above |
 | GET | `/api/stats/heatmap?minutes=60&cols=16&rows=9&source_id=` | `{grid, max}` dog-seconds per cell over the camera view (row 0 = top) |
 | GET | `/api/stats/summary?minutes=1440` | `{dogs_seen, alerts, events: {type: n}, busiest_hour, activity_seconds}` for dashboard cards |
-| GET | `/api/uploads` | videos in `recordings/`, each with a `source` to pass to `POST /api/sources` |
+| GET | `/api/uploads` | videos in `recordings/` (uploads and recordings), each with `source` (for `POST /api/sources`) and `url` (download / play) |
+| GET | `/api/uploads/{path}` | the video file itself |
+| POST | `/api/sources/{id}/recording` | start recording; body `{annotated?: false, max_minutes?: 10, fps?: 15}`. `409` if already recording |
+| GET | `/api/sources/{id}/recording` | `{active, seconds, size_mb, file, …}` (also in `GET /api/sources` as `recording`) |
+| DELETE | `/api/sources/{id}/recording` | stop; returns the status plus `url` and `source` of the saved file |
 | POST | `/api/uploads?filename=clip.mp4&start=1` | body = the video file itself (not a form). `start=1` also starts watching it |
 | GET | `/api/models` | `{current, current_info, available: [{name, size_mb, metrics, current}]}` |
 | POST | `/api/models/select` | body `{name}`: switch every camera to another model from `models/` |
 | POST | `/api/models/behaviour/reload` | load `models/behaviour.joblib` again after training; `GET /api/models` → `behaviour` shows labels and test results |
-| GET / PATCH | `/api/settings` | `confidence`, `max_fps`, `draw_people`, `draw_trails`, `draw_zones`, `alert_zone`, `alert_approach`, `alert_pack`, `pack_size`, `use_behaviour_model` (+ read-only `behaviour_model_loaded`) |
+| GET / PATCH | `/api/settings` | `confidence`, `max_fps`, `draw_people`, `draw_trails`, `draw_zones`, `alert_zone`, `alert_approach`, `alert_pack`, `pack_size`, `use_behaviour_model` (+ read-only `behaviour_model_loaded`), `alert_clips` |
 | GET | `/api/sources/{id}/zones` | zones drawn on this camera `[{id, name, points}]` |
 | POST | `/api/sources/{id}/zones` | body `{name, points: [[x, y], …]}`: 3–20 corners as fractions of the frame (0–1) |
 | DELETE | `/api/zones/{zone_id}` | remove a zone |
-| GET | `/api/alerts?limit=&after_id=` | only alerts, newest first, each with `snapshot_url` (the frame when it happened) |
+| GET | `/api/alerts?limit=&after_id=` | only alerts, newest first, each with `snapshot_url` (the frame when it happened) and `clip_url` (a few seconds of video before and after, `.webm`; appears ~4 s after the alert) |
 | WS | `/ws/live` | every 0.5 s: `{ts, sources: {id: live state}, events: [new events]}` |
 | GET | `/media/dogs/dog_<id>.jpg` | saved dog photo |
 | GET | `/api/phone-link` | `{enabled, urls, qr_url, phones_connected}` |
@@ -101,6 +106,11 @@ CORS is open for the Vite dev server on `http://localhost:5173`.
 Alerts are saved as events with a photo in `backend/storage/alerts/`. Zones are stored per camera (webcam number, file path, stream URL or phone name), so they come back after a restart. These are simple, explainable rules on top of the detector; we don't claim to detect "aggression".
 
 To draw a zone on the test page: pick a camera, press **Draw a zone**, click the corners on the video, name it and save.
+
+## Recording
+
+- **Record button** (or `POST /api/sources/{id}/recording`): saves the clean camera video to `recordings/captures/<camera>_<date>_<time>.mp4`, at real speed even when the camera stutters, for at most 10 minutes. This is the easiest way to collect street-dog clips for training: point a phone at the street, press record, then cut the clips. `annotated: true` records the view with boxes instead, for the report or slides.
+- **Alert clips:** every alert saves about 4 s before and 4 s after as a `.webm` next to its photo. Alerts close together share one clip. Turn off with `alert_clips: false`.
 
 ## Models
 

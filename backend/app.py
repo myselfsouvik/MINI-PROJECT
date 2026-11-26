@@ -32,6 +32,8 @@ Main endpoints (all JSON unless noted)
     GET    /api/stats/heatmap                 where dogs spend time (grid over the frame)
     GET    /api/stats/summary                 dogs seen, events by type, busiest hour
     GET    /api/uploads  POST /api/uploads    videos in the media folder / upload one
+    GET    /api/uploads/{path}                download / play one of those videos
+    POST   /api/sources/{id}/recording        start recording a camera   DELETE = stop, GET = status
     GET    /api/models   POST /api/models/select   which model is loaded, switch model
     POST   /api/models/behaviour/reload       load a newly trained behaviour classifier
     GET    /api/settings  PATCH /api/settings detection confidence etc.
@@ -134,6 +136,13 @@ class SettingsPatch(BaseModel):
     alert_pack: bool | None = None
     pack_size: int | None = Field(None, ge=2, le=20)
     use_behaviour_model: bool | None = None
+    alert_clips: bool | None = None
+
+
+class StartRecording(BaseModel):
+    annotated: bool = Field(False, description="record the view with boxes instead of the clean camera image")
+    max_minutes: float = Field(10, gt=0, le=60)
+    fps: float = Field(15, ge=1, le=30)
 
 
 class SelectModel(BaseModel):
@@ -214,6 +223,7 @@ class SourceManager:
             "dogs_visible": len(live["dogs"]),
             "people_visible": live["people"],
             "stream_url": f"/api/sources/{source_id}/stream.mjpg",
+            "recording": pipe.recording_status(),
         }
 
     def reload_zones(self, camera_key: str | None = None) -> None:
@@ -412,6 +422,7 @@ def create_app(settings: AppSettings | None = None, initial_sources: list[str] |
                 "alert_approach": ps.alerts.approach, "alert_pack": ps.alerts.pack,
                 "pack_size": ps.alerts.pack_size,
                 "use_behaviour_model": ps.use_behaviour_model,
+                "alert_clips": ps.alert_clips,
                 "behaviour_model_loaded": ps.behaviour_model is not None}
 
     @app.patch("/api/settings")
@@ -500,6 +511,49 @@ def create_app(settings: AppSettings | None = None, initial_sources: list[str] |
         return StreamingResponse(frames(), media_type="multipart/x-mixed-replace; boundary=frame",
                                  headers={"Cache-Control": "no-store"})
 
+    def with_urls(events: list[dict]) -> list[dict]:
+        for e in events:
+            e["snapshot_url"] = f"/media/{e['snapshot']}" if e["snapshot"] else None
+            e["clip_url"] = f"/media/{e['clip']}" if e.get("clip") else None
+        return events
+
+    # -- recording -------------------------------------------------------------
+
+    @app.post("/api/sources/{source_id}/recording", status_code=201)
+    def start_recording(source_id: str, body: StartRecording | None = None):
+        """Record this camera to recordings/captures/ (for training clips or the report)."""
+        body = body or StartRecording()
+        pipe = manager.get(source_id)
+        name = re.sub(r"\.[A-Za-z0-9]{2,4}$", "", pipe.camera.name)          # "Video clip.mp4" -> "Video clip"
+        safe = re.sub(r"[^A-Za-z0-9_-]+", "_", name).strip("_")[:30] or source_id
+        path = Path(settings.media_dir) / "captures" / f"{safe}_{time.strftime('%Y%m%d_%H%M%S')}.mp4"
+        try:
+            status = pipe.start_recording(path, body.annotated, body.max_minutes * 60, body.fps)
+        except RuntimeError as e:
+            raise HTTPException(409, str(e))
+        db.add_event(source_id, "recording_started", f"Recording {pipe.camera.name} to {path.name}")
+        return status
+
+    @app.get("/api/sources/{source_id}/recording")
+    def recording_status(source_id: str):
+        status = manager.get(source_id).recording_status()
+        if status is None:
+            raise HTTPException(404, "Not recording")
+        return status
+
+    @app.delete("/api/sources/{source_id}/recording")
+    def stop_recording(source_id: str):
+        pipe = manager.get(source_id)
+        status = pipe.stop_recording()
+        if status is None:
+            raise HTTPException(404, "Not recording")
+        rel = f"captures/{status['file']}"
+        status["source"] = str(Path(settings.media_dir) / rel)     # use with POST /api/sources
+        status["url"] = f"/api/uploads/{rel}"
+        db.add_event(source_id, "recording_saved",
+                     f"Saved {status['seconds']} s recording {status['file']} ({status['size_mb']} MB)")
+        return status
+
     # -- zones -----------------------------------------------------------------
 
     @app.get("/api/sources/{source_id}/zones")
@@ -546,17 +600,11 @@ def create_app(settings: AppSettings | None = None, initial_sources: list[str] |
 
     @app.get("/api/events")
     def list_events(limit: int = Query(100, le=1000), type: str | None = None, after_id: int = 0):
-        events = db.list_events(limit, type, after_id)
-        for e in events:
-            e["snapshot_url"] = f"/media/{e['snapshot']}" if e["snapshot"] else None
-        return events
+        return with_urls(db.list_events(limit, type, after_id))
 
     @app.get("/api/alerts")
     def list_alerts(limit: int = Query(50, le=1000), after_id: int = 0):
-        alerts = db.list_events(limit, after_id=after_id, types=ALERT_TYPES)
-        for a in alerts:
-            a["snapshot_url"] = f"/media/{a['snapshot']}" if a["snapshot"] else None
-        return alerts
+        return with_urls(db.list_events(limit, after_id=after_id, types=ALERT_TYPES))
 
     @app.get("/api/stats/timeline")
     def stats_timeline(minutes: float = Query(60, gt=0, le=60 * 24 * 30),
@@ -614,7 +662,17 @@ def create_app(settings: AppSettings | None = None, initial_sources: list[str] |
         files = [f for f in media_dir.rglob("*") if f.is_file() and f.suffix.lower() in VIDEO_TYPES]
         files.sort(key=lambda f: -f.stat().st_mtime)
         return [{"name": f.name, "source": str(f), "size_mb": round(f.stat().st_size / 1e6, 1),
-                 "modified": f.stat().st_mtime} for f in files]
+                 "modified": f.stat().st_mtime,
+                 "url": "/api/uploads/" + f.relative_to(media_dir).as_posix()} for f in files]
+
+    @app.get("/api/uploads/{rel_path:path}")
+    def get_video(rel_path: str):
+        """Download or play a video from the media folder (recordings, uploads, captures)."""
+        target = (media_dir / rel_path).resolve()
+        if (not target.is_relative_to(media_dir.resolve()) or not target.is_file()
+                or target.suffix.lower() not in VIDEO_TYPES):
+            raise HTTPException(404, "No such video")
+        return FileResponse(target, filename=target.name)
 
     @app.post("/api/uploads", status_code=201)
     async def upload_video(request: Request, filename: str = Query(..., max_length=120),

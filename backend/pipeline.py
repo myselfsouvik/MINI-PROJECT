@@ -12,6 +12,7 @@ slow model never blocks the API.
 from __future__ import annotations
 
 import threading
+from collections import deque
 import time
 import traceback
 from dataclasses import dataclass, field
@@ -24,6 +25,11 @@ from backend.alerts import AlertEngine, AlertRules, DogView, Zone
 from backend.behaviour import RESTING, RUNNING, WALKING, BehaviourTracker, TrackState
 from backend.cameras import CameraSource
 from backend.db import Database
+from backend.recording import VideoRecorder, write_clip
+
+CLIP_BEFORE = 4.0    # seconds of video kept from before an alert
+CLIP_AFTER = 4.0     # and recorded after it
+CLIP_FPS = 10.0
 
 PERSON_CLASS = 0     # COCO numbers, used by the stock model
 DOG_CLASS = 16
@@ -68,6 +74,7 @@ class PipelineSettings:
     draw_people: bool = True
     draw_trails: bool = True
     draw_zones: bool = True
+    alert_clips: bool = True                 # save a short video with each alert
     alerts: AlertRules = field(default_factory=AlertRules)   # shared by all cameras
     behaviour_model: object | None = None    # backend.features.BehaviourModel, if trained
     use_behaviour_model: bool = True
@@ -123,6 +130,14 @@ class Pipeline:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
+        # Alert clips: annotated JPEGs of the last CLIP_BEFORE seconds, and the
+        # clips still collecting their "after" part.
+        self._recent: deque = deque()
+        self._clip_jobs: list[dict] = []
+        # Manual recording (VideoRecorder) and whether it records the annotated view.
+        self.recorder: VideoRecorder | None = None
+        self._recorder_annotated = False
+
     # -- lifecycle -----------------------------------------------------------
 
     def start(self) -> "Pipeline":
@@ -140,6 +155,10 @@ class Pipeline:
         self._stop.set()
         if self._thread and self._thread is not threading.current_thread():
             self._thread.join(timeout=5)
+        self.stop_recording()
+        for job in self._clip_jobs:              # save what we have of unfinished clips
+            self._save_clip(job, background=False)
+        self._clip_jobs = []
         self.camera.stop()
         self._flush_all(time.time())
         if self.live.status in ("running", "starting"):
@@ -172,6 +191,34 @@ class Pipeline:
             self._dog_left(state, now)
         self.behaviour = BehaviourTracker()
         self._model, self._dog_cls, self._person_cls = model, dog, person
+
+    # -- manual recording ---------------------------------------------------------
+
+    def start_recording(self, path: Path, annotated: bool = False, max_seconds: float = 600,
+                        fps: float = 15.0) -> dict:
+        if self.recorder and self.recorder.active:
+            raise RuntimeError("Already recording this camera.")
+        self.recorder = VideoRecorder(path, fps=fps, max_seconds=max_seconds)
+        self._recorder_annotated = annotated
+        if not annotated:            # clean frames straight from the camera, at camera speed
+            self.camera.add_listener(self.recorder.feed)
+        return self.recorder.status()
+
+    def stop_recording(self) -> dict | None:
+        rec = self.recorder
+        if rec is None:
+            return None
+        self.camera.remove_listener(rec.feed)
+        status = rec.stop()
+        return status
+
+    def recording_status(self) -> dict | None:
+        if self.recorder is None:
+            return None
+        status = self.recorder.status()
+        if not status["active"]:                 # finished by itself (time limit)
+            self.camera.remove_listener(self.recorder.feed)
+        return status
 
     # -- results for the API -------------------------------------------------
 
@@ -280,6 +327,10 @@ class Pipeline:
         q = [cv2.IMWRITE_JPEG_QUALITY, self.settings.jpeg_quality]
         ok1, jpg = cv2.imencode(".jpg", annotated, q)
         ok2, raw_jpg = cv2.imencode(".jpg", raw, q)
+        if ok1:
+            self._collect_clip_frames(jpg.tobytes(), now)
+        if self.recorder is not None and self._recorder_annotated:
+            self.recorder.feed(annotated, time.perf_counter())
 
         with self._lock:
             if ok1:
@@ -370,8 +421,47 @@ class Pipeline:
         rel = f"alerts/{self.source_id}_{int(now * 1000)}_{self._alert_count}.jpg"
         path = self.storage_dir / rel
         snapshot = rel if cv2.imwrite(str(path), annotated) else None
-        self.db.add_event(self.source_id, alert.type, alert.message, dog_id=alert.dog_id,
-                          snapshot=snapshot, ts=now)
+        event_id = self.db.add_event(self.source_id, alert.type, alert.message, dog_id=alert.dog_id,
+                                     snapshot=snapshot, ts=now)
+        if not self.settings.alert_clips:
+            return
+        # Alerts close together share one clip.
+        for job in self._clip_jobs:
+            if now - job["start"] < 1.0:
+                job["events"].append(event_id)
+                return
+        self._clip_jobs.append({"start": now, "until": now + CLIP_AFTER, "events": [event_id],
+                                "frames": list(self._recent),
+                                "file": f"alerts/{self.source_id}_{int(now * 1000)}.webm"})
+
+    def _collect_clip_frames(self, jpg: bytes, now: float) -> None:
+        self._recent.append((now, jpg))
+        while self._recent and now - self._recent[0][0] > CLIP_BEFORE:
+            self._recent.popleft()
+        if not self._clip_jobs:
+            return
+        still = []
+        for job in self._clip_jobs:
+            job["frames"].append((now, jpg))
+            if now >= job["until"]:
+                self._save_clip(job)
+            else:
+                still.append(job)
+        self._clip_jobs = still
+
+    def _save_clip(self, job: dict, background: bool = True) -> None:
+        def work():
+            try:
+                if write_clip(job["frames"], self.storage_dir / job["file"], CLIP_FPS):
+                    for event_id in job["events"]:
+                        self.db.set_event_clip(event_id, job["file"])
+            except Exception as e:      # a clip is a bonus: never break detection over it
+                print(f"[clip] {job['file']}: {e}")
+
+        if background:
+            threading.Thread(target=work, name="alert-clip", daemon=True).start()
+        else:
+            work()
 
     # -- drawing ---------------------------------------------------------------
 
