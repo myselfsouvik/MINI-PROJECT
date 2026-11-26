@@ -57,8 +57,9 @@ Runtime data (database + dog snapshots) is written to `backend/storage/` and is 
 | GET | `/api/sources/{id}/stream.mjpg` | live annotated video. Use as `<img src="…">`; `?raw=1` for the clean frame |
 | GET | `/api/sources/{id}/snapshot.jpg` | one frame |
 | GET | `/api/sources/{id}/live` | dogs visible now: `dog_id, box, activity, behaviour, behaviour_conf, speed, confidence, trail, zones` (`behaviour` = classifier label, `null` without a trained model) |
-| GET | `/api/dogs?limit=&source_id=&min_seconds=` | dogs seen, newest first, with `snapshot_url` and seconds per activity |
-| GET | `/api/dogs/{id}` | one dog + all its observations (for charts) |
+| GET | `/api/dogs?limit=&source_id=&min_seconds=&sort=&minutes=` | dogs seen, with `snapshot_url`, seconds per activity, `activity_share` and `main_activity`. `sort`: `recent` (default), `longest`, `active`, `fastest`, `oldest`; `minutes`: only dogs seen in the last N minutes |
+| GET | `/api/dogs/{id}?observations=true` | one dog: the same fields + `path` (up to 300 points `{ts, x, y, activity}`, 0..1 of the frame, to draw where it went), its `events`, and all its per-second `observations` (`observations=false` to skip them) |
+| GET | `/api/export/{dogs,observations,events}.csv?minutes=` | download as CSV for the report / Excel / pandas; times also in local `YYYY-MM-DD HH:MM:SS` columns |
 | GET | `/api/events?limit=&type=&after_id=` | `source_added`, `dog_appeared`, `dog_left`, … |
 | GET | `/api/stats/activity?minutes=60` | seconds spent RESTING / WALKING / RUNNING |
 | GET | `/api/stats/timeline?minutes=60&bucket=60&source_id=` | `buckets: [{start, RESTING, WALKING, RUNNING}]` dog-seconds per time bucket (stacked chart) |

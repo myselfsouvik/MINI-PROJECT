@@ -50,6 +50,8 @@ send the access token (X-Access-Token header or ?token=), see security.py.
 from __future__ import annotations
 
 import asyncio
+import csv
+import io
 import itertools
 import json
 import re
@@ -57,6 +59,7 @@ import threading
 import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
@@ -583,22 +586,37 @@ def create_app(settings: AppSettings | None = None, initial_sources: list[str] |
 
     # -- dogs / events / stats -------------------------------------------------
 
+    def dog_view(d: dict) -> dict:
+        d["snapshot_url"] = f"/media/{d['snapshot']}" if d["snapshot"] else None
+        d["seconds_visible"] = round(d["last_seen"] - d["first_seen"], 1)
+        seconds = {"RESTING": d["resting_s"], "WALKING": d["walking_s"], "RUNNING": d["running_s"]}
+        total = sum(seconds.values())
+        d["activity_share"] = {k: round(v / total, 3) if total else 0.0 for k, v in seconds.items()}
+        d["main_activity"] = max(seconds, key=seconds.get) if total else None
+        return d
+
     @app.get("/api/dogs")
     def list_dogs(limit: int = Query(100, le=1000), source_id: str | None = None,
-                  min_seconds: float = 1.0):
-        dogs = db.list_dogs(limit, source_id, min_seconds)
-        for d in dogs:
-            d["snapshot_url"] = f"/media/{d['snapshot']}" if d["snapshot"] else None
-            d["seconds_visible"] = round(d["last_seen"] - d["first_seen"], 1)
-        return dogs
+                  min_seconds: float = 1.0, sort: str = "recent", minutes: float | None = Query(None, gt=0)):
+        """sort: recent, longest, fastest, active (most walking + running) or oldest."""
+        since = time.time() - minutes * 60 if minutes else 0.0
+        try:
+            dogs = db.list_dogs(limit, source_id, min_seconds, sort, since)
+        except ValueError as e:
+            raise HTTPException(422, str(e))
+        return [dog_view(d) for d in dogs]
 
     @app.get("/api/dogs/{dog_id}")
-    def get_dog(dog_id: int):
+    def get_dog(dog_id: int, observations: bool = True):
+        """One dog: activity split, path (for drawing on the camera view) and its events."""
         dog = db.get_dog(dog_id)
         if dog is None:
             raise HTTPException(404, f"No dog {dog_id}")
-        dog["snapshot_url"] = f"/media/{dog['snapshot']}" if dog["snapshot"] else None
-        dog["observations"] = db.observations(dog_id=dog_id)
+        dog = dog_view(dog)
+        dog["path"] = db.dog_path(dog_id)
+        dog["events"] = with_urls(db.dog_events(dog_id))
+        if observations:                       # every per-second row; ?observations=false to skip
+            dog["observations"] = db.observations(dog_id=dog_id)
         return dog
 
     @app.get("/api/events")
@@ -608,6 +626,33 @@ def create_app(settings: AppSettings | None = None, initial_sources: list[str] |
     @app.get("/api/alerts")
     def list_alerts(limit: int = Query(50, le=1000), after_id: int = 0):
         return with_urls(db.list_events(limit, after_id=after_id, types=ALERT_TYPES))
+
+    @app.get("/api/export/{name}.csv")
+    def export_csv(name: str, minutes: float | None = Query(None, gt=0)):
+        """dogs, observations or events as CSV (for the report, Excel or pandas)."""
+        if name not in db.EXPORTS:
+            raise HTTPException(404, f"Unknown export {name!r}; use one of {', '.join(db.EXPORTS)}")
+        since = time.time() - minutes * 60 if minutes else 0.0
+
+        def lines():
+            buf = io.StringIO()
+            writer = csv.writer(buf)
+            rows = db.export_rows(name, since)
+            header = next(rows)
+            time_cols = [i for i, c in enumerate(header) if c in ("ts", "first_seen", "last_seen")]
+            writer.writerow(header + [f"{header[i]}_local" for i in time_cols])
+            for row in rows:
+                stamps = [datetime.fromtimestamp(row[i]).isoformat(sep=" ", timespec="seconds") for i in time_cols]
+                writer.writerow(list(row) + stamps)
+                if buf.tell() > 64_000:
+                    yield buf.getvalue()
+                    buf.seek(0)
+                    buf.truncate()
+            yield buf.getvalue()
+
+        stamp = datetime.now().strftime("%Y%m%d_%H%M")
+        return StreamingResponse(lines(), media_type="text/csv; charset=utf-8",
+                                 headers={"Content-Disposition": f'attachment; filename="dogwatch_{name}_{stamp}.csv"'})
 
     @app.get("/api/stats/timeline")
     def stats_timeline(minutes: float = Query(60, gt=0, le=60 * 24 * 30),
