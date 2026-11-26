@@ -3,204 +3,439 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>DogWatch Test Console</title>
+<meta name="description" content="DogWatch console: watch street dogs on your cameras, live.">
+<meta name="theme-color" content="#232B27">
+<title>DogWatch</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&display=swap" rel="stylesheet">
 <style>
+  /* Works offline too: without the web fonts it falls back to the system font. */
   :root {
-    --bg: #f6f7f9; --panel: #ffffff; --text: #1d2330; --muted: #667085; --line: #e3e6ec;
-    --accent: #2563eb; --danger: #dc2626;
-    --resting: #2a8be0; --walking: #3caa3c; --running: #e5482a;
+    --ground: #E9EDE6; --sheet: #F7F9F5; --ink: #18231D; --muted: #5B6860; --line: #CDD5CC;
+    --asphalt: #232B27; --asphalt-2: #2F3933; --asphalt-ink: #E6ECE7; --asphalt-muted: #9FAEA5;
+    --marigold: #F0A202; --link: #1E6B45; --alert: #B9361E; --alert-soft: #F7E1DA;
+    --rest: #3D78A8; --walk: #2F8F55; --run: #D5422A;
+    --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+    --body: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+    color-scheme: light;
   }
   @media (prefers-color-scheme: dark) {
-    :root { --bg: #12151b; --panel: #1b2029; --text: #e6e9ef; --muted: #9aa3b2; --line: #2b3240; }
+    :root { --ground: #121815; --sheet: #1A221E; --ink: #E4EBE5; --muted: #93A198; --line: #2E3A33;
+            --asphalt: #0D1310; --asphalt-2: #1B241F; --link: #7CCB9C; --alert: #FF8466; --alert-soft: #3A1F18;
+            color-scheme: dark; }
   }
   * { box-sizing: border-box; }
-  body { margin: 0; font: 14px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-         background: var(--bg); color: var(--text); }
-  header { padding: 14px 20px; border-bottom: 1px solid var(--line); display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
-  header h1 { font-size: 18px; margin: 0; }
-  header span { color: var(--muted); }
-  main { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; padding: 16px 20px; }
-  @media (max-width: 900px) { main { grid-template-columns: 1fr; padding: 12px 16px; } }
-  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin-bottom: 16px; }
-  .panel h2 { font-size: 14px; margin: 0 0 10px; }
-  form { display: flex; gap: 8px; flex-wrap: wrap; }
-  input, select, button { font: inherit; padding: 7px 10px; border-radius: 7px; border: 1px solid var(--line);
-                          background: var(--bg); color: var(--text); }
-  input { flex: 1; min-width: 140px; }
-  button { background: var(--accent); color: #fff; border: 0; cursor: pointer; }
-  button.ghost { background: transparent; color: var(--danger); border: 1px solid var(--line); }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--ground); color: var(--ink); font: 15px/1.5 var(--body); }
+  h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -0.01em; margin: 0; }
+  h2 { font-size: 21px; line-height: 1.2; }
+  h3 { font-size: 16px; line-height: 1.3; }
+  a { color: var(--link); }
+  p { margin: 0; }
+  :focus-visible { outline: 3px solid var(--marigold); outline-offset: 2px; border-radius: 4px; }
   .muted { color: var(--muted); }
-  .error { color: var(--danger); }
-  .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
-  .tab { padding: 6px 10px; border-radius: 7px; border: 1px solid var(--line); cursor: pointer; background: var(--bg); color: var(--text); }
-  .tab.on { border-color: var(--accent); color: var(--accent); }
-  .video { width: 100%; background: #000; border-radius: 8px; aspect-ratio: 16 / 9; object-fit: contain; display: block; }
-  .stats { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 8px; color: var(--muted); }
-  .stats b { color: var(--text); }
-  table { width: 100%; border-collapse: collapse; }
-  td, th { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--line); }
-  .pill { padding: 1px 8px; border-radius: 99px; color: #fff; font-size: 12px; }
-  .RESTING { background: var(--resting); } .WALKING { background: var(--walking); } .RUNNING { background: var(--running); }
-  .dogs { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 8px; }
-  .dogs figure { margin: 0; font-size: 12px; }
-  .dogs img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 6px; background: var(--bg); }
-  ul.events { list-style: none; margin: 0; padding: 0; max-height: 300px; overflow: auto; }
-  ul.events li { padding: 4px 0; border-bottom: 1px solid var(--line); }
-  .qr { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
-  .qr img { width: 180px; height: 180px; background: #fff; border-radius: 8px; padding: 6px; }
-  .qr > div { flex: 1 1 220px; min-width: 0; }
+  .error { color: var(--alert); }
+  .num { font-family: var(--display); font-variant-numeric: tabular-nums; }
+  [hidden] { display: none !important; }
+
+  /* -- controls ---------------------------------------------------------- */
+  button, input, select { font: inherit; color: inherit; }
+  button { cursor: pointer; border: 0; border-radius: 8px; padding: 8px 14px; font-weight: 700;
+           background: var(--ink); color: var(--sheet); }
+  button:disabled { opacity: .45; cursor: default; }
+  button.quiet { background: transparent; color: var(--ink); border: 1px solid var(--line); font-weight: 400; }
+  button.danger { background: transparent; color: var(--alert); border: 1px solid var(--line); font-weight: 400; }
+  input[type=text], input[type=number], input:not([type]), select {
+    padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--sheet); min-width: 0; }
+  input[type=range] { width: 100%; accent-color: var(--marigold); }
+  input[type=checkbox] { accent-color: var(--walk); width: 18px; height: 18px; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .grow { flex: 1 1 200px; }
+
+  /* -- top bar ----------------------------------------------------------- */
+  .top { background: var(--asphalt); color: var(--asphalt-ink); }
+  .top-inner { max-width: 1440px; margin: 0 auto; padding: 12px 20px 0; display: grid;
+               grid-template-columns: auto 1fr auto; gap: 8px 20px; align-items: center; }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand svg { width: 30px; height: 30px; flex: none; }
+  .brand h1 { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; }
+  .conn { justify-self: end; display: flex; align-items: center; gap: 8px; color: var(--asphalt-muted); font-size: 14px; }
+  .conn i { width: 9px; height: 9px; border-radius: 50%; background: var(--asphalt-muted); }
+  .conn.on i { background: #5FD08A; box-shadow: 0 0 0 4px rgba(95,208,138,.18); }
+  .conn.off i { background: var(--run); }
+  nav.views { grid-column: 1 / -1; display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; margin: 0 -4px; }
+  nav.views::-webkit-scrollbar { display: none; }
+  nav.views button { background: transparent; color: var(--asphalt-muted); border-radius: 8px 8px 0 0; padding: 10px 14px 12px;
+                     font-weight: 700; white-space: nowrap; position: relative; }
+  nav.views button[aria-selected=true] { color: var(--asphalt-ink); }
+  nav.views button[aria-selected=true]::after { content: ""; position: absolute; left: 14px; right: 14px; bottom: 0;
+                     height: 4px; border-radius: 4px 4px 0 0; background: var(--marigold); }
+  nav.views .count { display: inline-block; min-width: 20px; padding: 0 6px; margin-left: 6px; border-radius: 99px;
+                     background: var(--run); color: #fff; font-size: 12px; line-height: 20px; text-align: center; }
+
+  main { max-width: 1440px; margin: 0 auto; padding: 20px; }
+  .view-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+  .view-head p { max-width: 62ch; }
+  .sheet { background: var(--sheet); border: 1px solid var(--line); border-radius: 12px; padding: 18px; }
+  .sheet + .sheet { margin-top: 16px; }
+  .sheet > h3 { margin-bottom: 10px; }
+
+  /* -- live view --------------------------------------------------------- */
+  .live { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 20px; align-items: start; }
+  .stage { background: var(--asphalt); color: var(--asphalt-ink); border-radius: 16px; padding: 14px; }
+  .camtabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+  .camtab { background: var(--asphalt-2); color: var(--asphalt-muted); font-weight: 400; border: 1px solid transparent;
+            display: flex; align-items: center; gap: 8px; }
+  .camtab[aria-pressed=true] { color: var(--asphalt-ink); border-color: var(--marigold); }
+  .camtab i { width: 8px; height: 8px; border-radius: 50%; background: var(--asphalt-muted); }
+  .camtab i.running { background: #5FD08A; } .camtab i.error, .camtab i.stopped { background: var(--run); }
+  .camtab.add { color: var(--marigold); border: 1px dashed #56635B; }
+  .frame { position: relative; border-radius: 10px; overflow: hidden; background: #000; aspect-ratio: 16 / 9; }
+  .frame img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .frame svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+  .frame.drawing img { cursor: crosshair; }
+  .frame.drawing { box-shadow: inset 0 0 0 3px var(--marigold); }
+  /* viewfinder corners: the one decorative flourish, it marks the live picture */
+  .frame::before, .frame::after { content: ""; position: absolute; width: 28px; height: 28px; pointer-events: none;
+            border: 3px solid var(--marigold); z-index: 1; }
+  .frame::before { top: 10px; left: 10px; border-right: 0; border-bottom: 0; border-radius: 6px 0 0 0; }
+  .frame::after { right: 10px; bottom: 10px; border-left: 0; border-top: 0; border-radius: 0 0 6px 0; }
+  .frame .empty { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; gap: 14px; padding: 24px;
+                  color: var(--asphalt-ink); background: radial-gradient(circle at 50% 40%, #2C3630, var(--asphalt)); }
+  .frame .empty h2 { font-size: clamp(22px, 3vw, 32px); }
+  .frame .empty p { color: var(--asphalt-muted); max-width: 46ch; margin: 0 auto; }
+  .frame .empty .row { justify-content: center; }
+  .rec-badge { position: absolute; top: 12px; right: 12px; z-index: 2; background: rgba(0,0,0,.65); color: #fff; border-radius: 99px;
+               padding: 3px 10px 3px 8px; font-size: 13px; display: flex; gap: 6px; align-items: center; }
+  .rec-badge i { width: 9px; height: 9px; border-radius: 50%; background: var(--run); animation: blink 1.2s infinite; }
+  @keyframes blink { 50% { opacity: .2; } }
+  @media (prefers-reduced-motion: reduce) { .rec-badge i { animation: none; } }
+  .stage button.quiet { color: var(--asphalt-ink); border-color: #4A5750; }
+  .stage button.danger { color: #FF9A80; border-color: #4A5750; }
+  .stage button.primary { background: var(--marigold); color: #1E1A0C; }
+  .stage input { background: var(--asphalt-2); border-color: #4A5750; color: var(--asphalt-ink); }
+  .toolbar { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 12px; align-items: center; }
+  .readout { display: flex; gap: 22px; flex-wrap: wrap; color: var(--asphalt-muted); font-size: 13px; }
+  .readout b { display: block; color: var(--asphalt-ink); font-family: var(--display); font-size: 20px; line-height: 1.1;
+               font-variant-numeric: tabular-nums; }
+  .zonebar { margin-top: 12px; padding-top: 12px; border-top: 1px solid #3C4841; }
+  .zonebar p { color: var(--asphalt-muted); font-size: 14px; margin-top: 8px; }
+
+  .rail { display: grid; gap: 16px; }
+  .tags { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  /* a collar tag: a punched hole on the left, the dog's number big */
+  .tag { position: relative; display: grid; grid-template-columns: auto 1fr; gap: 2px 14px; align-items: center;
+         padding: 10px 12px 10px 30px; border-radius: 10px 16px 16px 10px; background: var(--ground); border-left: 6px solid var(--muted); }
+  .tag::before { content: ""; position: absolute; left: 9px; top: 50%; width: 10px; height: 10px; margin-top: -5px;
+                 border-radius: 50%; background: var(--sheet); box-shadow: inset 0 0 0 2px var(--line); }
+  .tag.RESTING { border-left-color: var(--rest); } .tag.WALKING { border-left-color: var(--walk); } .tag.RUNNING { border-left-color: var(--run); }
+  .tag .id { font-family: var(--display); font-weight: 800; font-size: 26px; line-height: 1; grid-row: 1 / span 3; }
+  .tag .what { font-weight: 700; }
+  .tag .meta { color: var(--muted); font-size: 13px; grid-column: 2; }
+  .tag .zone { grid-column: 2; justify-self: start; font-size: 13px; background: var(--marigold); color: #2A2100; border-radius: 99px; padding: 1px 9px; margin-top: 3px; }
+  .act { font-weight: 700; }
+  .act.RESTING { color: var(--rest); } .act.WALKING { color: var(--walk); } .act.RUNNING { color: var(--run); }
+
+  .feed { list-style: none; margin: 0; padding: 0; max-height: 420px; overflow: auto; }
+  .feed li { display: grid; grid-template-columns: 70px 1fr; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); font-size: 14px; }
+  .feed li:first-child { border-top: 0; }
+  .feed time { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 13px; padding-top: 1px; }
+  .feed li.alert { background: var(--alert-soft); margin: 2px -10px; padding: 8px 10px; border-radius: 8px; border-top: 0; }
+  .feed li.alert span:first-of-type { color: var(--alert); font-weight: 700; }
+  .feed a { margin-right: 10px; font-size: 13px; }
+  .zones { list-style: none; margin: 0; padding: 0; }
+  .zones li { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid var(--line); }
+  .zones li:first-child { border-top: 0; }
+
+  /* -- dogs view --------------------------------------------------------- */
+  .dogs-layout { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 20px; align-items: start; }
+  .dog-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 14px; }
+  .dog { all: unset; cursor: pointer; display: block; border-radius: 12px; overflow: hidden; background: var(--sheet);
+         border: 1px solid var(--line); }
+  .dog:focus-visible { outline: 3px solid var(--marigold); outline-offset: 2px; }
+  .dog[aria-pressed=true] { border-color: var(--marigold); box-shadow: 0 0 0 2px var(--marigold); }
+  .dog .pic { position: relative; aspect-ratio: 1; background: var(--line); color: var(--muted); font-size: 13px;
+              display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  .dog .pic img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+  .dog .cap { padding: 8px 10px 10px; display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
+  .dog .cap b { font-family: var(--display); font-size: 18px; }
+  .dog .cap span { color: var(--muted); font-size: 13px; }
+  .profile { position: sticky; top: 16px; }
+  .profile .head { display: grid; grid-template-columns: 96px 1fr; gap: 14px; align-items: center; margin-bottom: 14px; }
+  .profile .head img, .profile .head .ph { width: 96px; aspect-ratio: 1; object-fit: cover; border-radius: 10px; background: var(--line); }
+  .profile h2 { font-size: 28px; }
+  .profile canvas { width: 100%; aspect-ratio: 16 / 9; border-radius: 10px; background: var(--ground); display: block; margin: 10px 0 4px; }
+  .facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 12px 0; }
+  .facts div { font-size: 13px; color: var(--muted); }
+  .facts b { display: block; font-family: var(--display); font-size: 20px; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .split { display: flex; height: 12px; border-radius: 6px; overflow: hidden; background: var(--ground); }
+  .split div.RESTING { background: var(--rest); } .split div.WALKING { background: var(--walk); } .split div.RUNNING { background: var(--run); }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px; color: var(--muted); margin-top: 6px; }
+  .legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; background: var(--c); }
+
+  /* -- activity view ----------------------------------------------------- */
+  .figures { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; margin-bottom: 20px;
+             border: 1px solid var(--line); border-radius: 12px; background: var(--sheet); }
+  .figures div { padding: 16px 18px; border-left: 1px solid var(--line); color: var(--muted); }
+  .figures div:first-child { border-left: 0; }
+  .figures b { display: block; font-family: var(--display); font-weight: 800; font-size: clamp(30px, 4vw, 44px); line-height: 1.05;
+               color: var(--ink); font-variant-numeric: tabular-nums; }
+  .two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  .two .sheet + .sheet { margin-top: 0; }
+  canvas.heat { width: 100%; aspect-ratio: 16 / 9; border-radius: 8px; background: var(--ground); display: block; }
+  .hist { display: flex; align-items: flex-end; gap: 3px; height: 120px; border-bottom: 1px solid var(--line); }
+  .hist div { flex: 1; background: var(--ink); opacity: .8; border-radius: 3px 3px 0 0; min-height: 1px; }
+
+  /* -- cameras, data, settings ------------------------------------------ */
+  .cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+  .cols .sheet + .sheet { margin-top: 0; }
+  .stack { display: grid; gap: 12px; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chips button { background: var(--ground); color: var(--ink); font-weight: 400; border: 1px solid var(--line); padding: 5px 10px; font-size: 14px; }
+  .qr { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+  .qr img { width: 180px; height: 180px; background: #fff; border-radius: 10px; padding: 8px; }
+  .qr ol { margin: 0; padding-left: 20px; }
   .qr code { word-break: break-all; }
-  .vwrap { position: relative; }
-  .vwrap svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-  .vwrap.drawing img { cursor: crosshair; outline: 2px solid var(--accent); }
-  ul.zones { list-style: none; margin: 8px 0 0; padding: 0; }
-  ul.zones li { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; border-bottom: 1px solid var(--line); }
-  ul.events li.alert { color: var(--danger); font-weight: 600; }
-  ul.events li.alert a { font-weight: normal; }
-  canvas.heat { width: 100%; aspect-ratio: 16 / 9; border-radius: 6px; background: var(--bg); display: block; }
-  .hist { display: flex; align-items: flex-end; gap: 2px; height: 70px; }
-  .hist div { flex: 1; background: var(--accent); border-radius: 2px 2px 0 0; min-height: 1px; }
-  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 10px; }
-  .cards div { background: var(--bg); border-radius: 7px; padding: 6px 8px; }
-  .cards b { display: block; font-size: 18px; }
-  .bar { display: flex; height: 14px; border-radius: 7px; overflow: hidden; background: var(--bg); }
-  .hbars { display: grid; grid-template-columns: max-content 1fr max-content; gap: 3px 8px; align-items: center; font-size: 12px; margin-bottom: 4px; }
-  .hbars i { display: block; height: 10px; background: var(--accent); border-radius: 0 3px 3px 0; min-width: 1px; }
-  details summary { cursor: pointer; font-weight: 600; margin: 8px 0 4px; }
-  .dogs figure { cursor: pointer; }
-  .dogs figure.sel img { outline: 2px solid var(--accent); }
-  .dogprof { display: grid; grid-template-columns: 110px 1fr; gap: 10px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
-  .dogprof img { width: 110px; aspect-ratio: 1; object-fit: cover; border-radius: 6px; background: var(--bg); }
-  .dogprof canvas { grid-column: 1 / -1; width: 100%; aspect-ratio: 16 / 9; border-radius: 6px; background: var(--bg); }
-  .dogprof ul { grid-column: 1 / -1; list-style: none; margin: 0; padding: 0; font-size: 12px; }
-  .rowhead { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-  .rowhead select { width: auto; }
+  .hbars { display: grid; grid-template-columns: max-content 1fr max-content; gap: 5px 10px; align-items: center; font-size: 14px; }
+  .hbars i { display: block; height: 12px; background: var(--marigold); border-radius: 0 4px 4px 0; min-width: 2px; }
+  .hbars span:nth-child(3n) { font-variant-numeric: tabular-nums; color: var(--muted); }
+  .charts { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+  .charts .sheet + .sheet { margin-top: 0; }
+  .charts .note { font-size: 13px; color: var(--muted); margin-top: 10px; }
+  .setting + .setting { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--line); }
+  .setting label.check { display: flex; gap: 10px; align-items: center; margin-top: 10px; }
+  .links { display: grid; gap: 6px; }
+
+  @media (max-width: 1100px) {
+    .live, .dogs-layout { grid-template-columns: 1fr; }
+    .profile { position: static; }
+  }
+  @media (max-width: 760px) {
+    main { padding: 14px 16px; }
+    .top-inner { padding: 10px 16px 0; }
+    .two, .cols { grid-template-columns: 1fr; }
+    .figures { grid-template-columns: 1fr; }
+    .figures div { border-left: 0; border-top: 1px solid var(--line); }
+    .figures div:first-child { border-top: 0; }
+    .stage { padding: 10px; border-radius: 12px; }
+    .dog-grid { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }
+  }
 </style>
 </head>
-<body>
-<header>
-  <h1>🐕 DogWatch: backend test console</h1>
-  <span>Temporary page for checking the API. The real dashboard lives in <code>frontend/</code>. API docs: <a href="/docs">/docs</a></span>
+<body id="dogwatch-console">
+<header class="top">
+  <div class="top-inner">
+    <div class="brand">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="15" fill="#F0A202"/>
+        <g fill="#232B27"><ellipse cx="16" cy="20" rx="6" ry="5"/><ellipse cx="9.5" cy="13" rx="2.3" ry="3"/>
+        <ellipse cx="22.5" cy="13" rx="2.3" ry="3"/><ellipse cx="13.2" cy="9" rx="2.1" ry="2.8"/><ellipse cx="18.8" cy="9" rx="2.1" ry="2.8"/></g></svg>
+      <h1>DogWatch</h1>
+    </div>
+    <span></span>
+    <div class="conn" id="conn" role="status"><i></i><span>Connecting…</span></div>
+    <nav class="views" role="tablist" aria-label="Pages">
+      <button role="tab" data-view="live" aria-selected="true">Live<span class="count" id="alertCount" hidden></span></button>
+      <button role="tab" data-view="dogs" aria-selected="false">Dogs</button>
+      <button role="tab" data-view="activity" aria-selected="false">Activity</button>
+      <button role="tab" data-view="cameras" aria-selected="false">Cameras</button>
+      <button role="tab" data-view="bites" aria-selected="false">Bites data</button>
+      <button role="tab" data-view="settings" aria-selected="false">Settings</button>
+    </nav>
+  </div>
 </header>
+
 <main>
-  <section>
-    <div class="panel">
-      <h2>Add a camera</h2>
-      <form id="addForm">
-        <input id="srcInput" placeholder="0 · 1 · http://192.168.1.5:8080/video · C:\path\clip.mp4" required>
-        <button>Add</button>
-      </form>
-      <p class="muted" id="localCams" style="margin:8px 0 0">
-        <a href="#" id="scanCams">Scan for webcams</a> (a phone on USB shows up here)
-      </p>
-      <p class="muted" style="margin:8px 0 0">Or upload a video:
-        <input type="file" id="upload" accept="video/*" style="min-width:0;padding:3px"></p>
-      <p class="muted" id="videos" style="margin:6px 0 0"></p>
-      <p class="error" id="addError"></p>
-    </div>
-
-    <div class="panel">
-      <h2>Connect a phone from its browser</h2>
-      <div id="phoneBox"><a href="#" id="phoneBtn">Show QR code</a></div>
-    </div>
-
-    <div class="panel">
-      <div class="tabs" id="tabs"><span class="muted">No cameras yet.</span></div>
-      <div class="vwrap" id="vwrap">
-        <img id="video" class="video" alt="Live camera">
-        <svg id="drawLayer"></svg>
+  <!-- LIVE -------------------------------------------------------------- -->
+  <section data-panel="live" role="tabpanel" aria-label="Live">
+    <div class="live">
+      <div class="stage">
+        <div class="camtabs" id="camTabs" aria-label="Cameras"></div>
+        <div class="frame" id="frame">
+          <img id="video" alt="Live camera with dog boxes" hidden>
+          <svg id="drawLayer"></svg>
+          <div class="rec-badge" id="recBadge" hidden><i></i><span></span></div>
+          <div class="empty" id="noCamera">
+            <h2>No camera is watching yet</h2>
+            <p>Add the laptop webcam, a phone, or a video file. Dogs on the street get a box, a number and an activity.</p>
+            <div class="row">
+              <button class="primary" data-go="cameras">Add a camera</button>
+              <button class="quiet" data-go="cameras" data-then="phone">Connect a phone</button>
+            </div>
+          </div>
+        </div>
+        <div class="toolbar" id="camTools" hidden>
+          <div class="readout" id="readout"></div>
+          <div class="row">
+            <button class="quiet" id="drawBtn">Draw a zone</button>
+            <button class="quiet" id="recBtn" title="Saves the clean camera video to recordings/captures/">Record</button>
+            <button class="danger" id="removeBtn">Remove camera</button>
+          </div>
+        </div>
+        <form class="zonebar" id="zoneForm" hidden>
+          <div class="row">
+            <input id="zoneName" class="grow" placeholder="Zone name, e.g. School gate" maxlength="40" aria-label="Zone name">
+            <button class="primary" id="saveZone" disabled>Save zone</button>
+            <button type="button" class="quiet" id="cancelZone">Cancel</button>
+          </div>
+          <p id="zoneHint">Click at least 3 corners on the video. You'll get an alert when a dog walks into the zone.</p>
+        </form>
       </div>
-      <div class="stats" id="stats"></div>
-    </div>
 
-    <div class="panel">
-      <h2>Zones (alert when a dog walks in)</h2>
-      <form id="zoneForm">
-        <button type="button" id="drawBtn">Draw a zone</button>
-        <input id="zoneName" placeholder="Zone name, e.g. School gate" maxlength="40">
-        <button id="saveZone" disabled>Save zone</button>
-        <button type="button" class="ghost" id="clearZone">Clear</button>
-      </form>
-      <p class="muted" id="zoneHint" style="margin:8px 0 0">Pick a camera, press <b>Draw a zone</b>, then click at least 3 corners on the video.</p>
-      <ul class="zones" id="zones"></ul>
-    </div>
-
-    <div class="panel">
-      <h2>Dogs visible now</h2>
-      <table><thead><tr><th>Dog</th><th>Activity</th><th>Speed (box h/s)</th><th>Conf.</th><th>Visible</th><th>In zone</th></tr></thead>
-      <tbody id="liveDogs"></tbody></table>
-    </div>
-
-    <div class="panel">
-      <h2>Storage</h2>
-      <div class="cards" id="storeCards"></div>
-      <p class="muted" id="storeText" style="margin:0 0 8px"></p>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <label>Delete data older than <input id="cleanDays" type="number" min="0.05" step="any" value="7"
-          style="flex:none;min-width:0;width:80px"> days</label>
-        <button class="ghost" id="cleanBtn">Clean up…</button>
+      <div class="rail">
+        <div class="sheet">
+          <h3 id="nowTitle">On camera now</h3>
+          <ul class="tags" id="liveDogs"><li class="muted">No dogs in view.</li></ul>
+        </div>
+        <div class="sheet">
+          <h3>Alerts and events</h3>
+          <ul class="feed" id="events"><li class="muted">Nothing has happened yet.</li></ul>
+        </div>
+        <div class="sheet">
+          <h3>Zones on this camera</h3>
+          <ul class="zones" id="zones"><li class="muted">Pick a camera to see its zones.</li></ul>
+        </div>
       </div>
-      <p class="muted" id="cleanMsg" style="margin:6px 0 0">Removes old dogs, positions, events and their photos/clips. Zones and videos are kept.</p>
     </div>
   </section>
 
-  <aside>
-    <div class="panel">
-      <h2>Detector model</h2>
-      <select id="model" style="width:100%"></select>
-      <p class="muted" id="modelInfo" style="margin:6px 0 0"></p>
-      <label style="display:block;margin-top:8px"><input type="checkbox" id="useBeh" style="min-width:0;flex:none">
-        Behaviour classifier</label>
-      <p class="muted" id="behInfo" style="margin:4px 0 0"></p>
-    </div>
-    <div class="panel">
-      <h2>Detection confidence: <span id="confVal"></span></h2>
-      <input type="range" id="conf" min="0.1" max="0.9" step="0.05" style="width:100%">
-      <h2 style="margin-top:10px">Detector image size</h2>
-      <select id="imgsz" style="width:100%">
-        <option value="320">320 · fastest, misses far dogs</option><option value="416">416 · faster</option>
-        <option value="512">512</option><option value="640">640 · default, most accurate</option>
-      </select>
-      <p class="muted" style="margin:6px 0 0">Laptop too slow? Try a smaller size, or run <code>python -m backend.benchmark</code>.</p>
-    </div>
-    <div class="panel">
-      <h2>Activity, last hour</h2>
-      <div class="cards" id="summary"></div>
-      <div class="bar" id="actBar"></div>
-      <p class="muted" id="actText" style="margin:6px 0 10px"></p>
-      <h2>Where dogs spend time (this camera)</h2>
-      <canvas class="heat" id="heat" width="320" height="180"></canvas>
-      <h2 style="margin-top:10px">Speed (box heights / s)</h2>
-      <div class="hist" id="hist"></div>
-      <p class="muted" id="histText" style="margin:4px 0 0"></p>
-    </div>
-    <div class="panel">
-      <h2>Insights: animal-bites dataset</h2>
-      <div class="cards" id="insCards"></div>
-      <div id="insCharts"></div>
-      <p class="muted" id="insSource" style="margin:6px 0 0"></p>
-    </div>
-    <div class="panel">
-      <div class="rowhead"><h2>Dogs seen</h2>
-        <select id="dogSort" title="Sort dogs">
+  <!-- DOGS -------------------------------------------------------------- -->
+  <section data-panel="dogs" role="tabpanel" aria-label="Dogs" hidden>
+    <div class="view-head">
+      <div><h2>Dogs seen</h2><p class="muted">Every dog the cameras have followed. Pick one to see where it went.</p></div>
+      <label class="row">Sort by
+        <select id="dogSort">
           <option value="recent">Most recent</option><option value="longest">Longest stay</option>
           <option value="active">Most active</option><option value="fastest">Fastest</option>
-        </select></div>
-      <div class="dogs" id="dogs"></div>
-      <div id="dogProfile"></div>
-      <p class="muted" style="margin:10px 0 0">Export for the report (CSV):
-        <a id="expDogs" href="/api/export/dogs.csv">dogs</a> ·
-        <a id="expObs" href="/api/export/observations.csv">positions every second</a> ·
-        <a id="expEvents" href="/api/export/events.csv">events</a></p>
-      <p class="muted" style="margin:6px 0 0">Session report (print to PDF):
-        <a id="repHour" href="/api/report?minutes=60" target="_blank">last hour</a> ·
-        <a id="repDay" href="/api/report?minutes=1440" target="_blank">last 24 h</a></p>
+        </select></label>
     </div>
-    <div class="panel">
-      <h2>Events</h2>
-      <ul class="events" id="events"></ul>
+    <div class="dogs-layout">
+      <div class="dog-grid" id="dogs"></div>
+      <aside class="sheet profile" id="dogProfile">
+        <h3>No dog picked</h3>
+        <p class="muted">Pick a dog to see its path on the camera, how it spent its time and what it did.</p>
+      </aside>
     </div>
-  </aside>
+  </section>
+
+  <!-- ACTIVITY ---------------------------------------------------------- -->
+  <section data-panel="activity" role="tabpanel" aria-label="Activity" hidden>
+    <div class="view-head">
+      <div><h2>The last hour</h2><p class="muted" id="actScope">All cameras.</p></div>
+      <div class="row">
+        <a id="repHour" href="/api/report?minutes=60" target="_blank">Report for the last hour</a>
+        <a id="repDay" href="/api/report?minutes=1440" target="_blank">Report for the last 24 hours</a>
+      </div>
+    </div>
+    <div class="figures" id="summary"></div>
+    <div class="sheet" style="margin-bottom:16px">
+      <h3>How dogs spent their time</h3>
+      <div class="split" id="actBar"></div>
+      <div class="legend" id="actText"></div>
+    </div>
+    <div class="two">
+      <div class="sheet">
+        <h3>Where dogs spend time</h3>
+        <canvas class="heat" id="heat" width="480" height="270"></canvas>
+        <p class="muted" style="margin-top:8px;font-size:13px">Darker means more dog-seconds in that part of the picture (selected camera).</p>
+      </div>
+      <div class="sheet">
+        <h3>How fast they move</h3>
+        <div class="hist" id="hist"></div>
+        <p class="muted" id="histText" style="margin-top:8px;font-size:13px"></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- CAMERAS ----------------------------------------------------------- -->
+  <section data-panel="cameras" role="tabpanel" aria-label="Cameras" hidden>
+    <div class="view-head"><div><h2>Add a camera</h2>
+      <p class="muted">Any of these works. You can run several at once and switch between them on the Live page.</p></div></div>
+    <div class="cols">
+      <div class="stack">
+        <div class="sheet">
+          <h3>Webcam, USB phone or Wi-Fi camera</h3>
+          <form class="row" id="addForm">
+            <input id="srcInput" class="grow" placeholder="0, or http://192.168.1.5:8080/video" required aria-label="Camera number or address">
+            <button>Add camera</button>
+          </form>
+          <p class="muted" style="margin-top:10px">Type <b>0</b> for the laptop webcam. A phone on USB shows up as another number.</p>
+          <div class="row" style="margin-top:10px"><button class="quiet" id="scanCams" type="button">Find webcams</button>
+            <div class="chips" id="localCams"></div></div>
+          <p class="error" id="addError" style="margin-top:8px" role="alert"></p>
+        </div>
+        <div class="sheet">
+          <h3>Video file</h3>
+          <p class="muted" style="margin-bottom:10px">Upload a street clip and it plays as a camera.</p>
+          <input type="file" id="upload" accept="video/*" aria-label="Upload a video">
+          <div class="chips" id="videos" style="margin-top:10px"></div>
+        </div>
+      </div>
+      <div class="sheet" id="phoneSheet">
+        <h3>Phone camera from its browser</h3>
+        <p class="muted" style="margin-bottom:12px">No app needed. The phone sends its camera to this laptop over Wi-Fi.</p>
+        <div id="phoneBox"><button id="phoneBtn">Show the QR code</button></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- BITES DATA -------------------------------------------------------- -->
+  <section data-panel="bites" role="tabpanel" aria-label="Bites data" hidden>
+    <div class="view-head"><div><h2>What the animal-bites records say</h2><p class="muted" id="insSource"></p></div></div>
+    <div class="figures" id="insCards"></div>
+    <div class="charts" id="insCharts"></div>
+  </section>
+
+  <!-- SETTINGS ---------------------------------------------------------- -->
+  <section data-panel="settings" role="tabpanel" aria-label="Settings" hidden>
+    <div class="view-head"><div><h2>Settings</h2><p class="muted">Changes apply to every camera straight away.</p></div></div>
+    <div class="cols">
+      <div class="sheet">
+        <div class="setting">
+          <h3>Detector model</h3>
+          <select id="model" style="width:100%;margin-top:8px" aria-label="Detector model"></select>
+          <p class="muted" id="modelInfo" style="margin-top:6px;font-size:14px"></p>
+          <label class="check"><input type="checkbox" id="useBeh"> Use the trained behaviour classifier</label>
+          <p class="muted" id="behInfo" style="margin-top:4px;font-size:14px"></p>
+        </div>
+        <div class="setting">
+          <h3>Detection confidence <span class="num" id="confVal"></span></h3>
+          <input type="range" id="conf" min="0.1" max="0.9" step="0.05" aria-label="Detection confidence" style="margin-top:8px">
+          <p class="muted" style="font-size:14px">Lower finds more dogs but also more mistakes.</p>
+        </div>
+        <div class="setting">
+          <h3>Detector image size</h3>
+          <select id="imgsz" style="width:100%;margin-top:8px" aria-label="Detector image size">
+            <option value="320">320, fastest, misses far-away dogs</option><option value="416">416, faster</option>
+            <option value="512">512</option><option value="640">640, most accurate (default)</option>
+          </select>
+          <p class="muted" style="margin-top:6px;font-size:14px">Laptop too slow? Pick a smaller size, or run <code>python -m backend.benchmark</code> to find the best one.</p>
+        </div>
+      </div>
+      <div class="stack">
+        <div class="sheet">
+          <h3>Storage</h3>
+          <div class="facts" id="storeCards"></div>
+          <p class="muted" id="storeText" style="font-size:14px"></p>
+          <div class="row" style="margin-top:14px">
+            <label class="row">Delete data older than
+              <input id="cleanDays" type="number" min="0.05" step="any" value="7" style="width:80px"> days</label>
+            <button class="danger" id="cleanBtn">Delete old data…</button>
+          </div>
+          <p class="muted" id="cleanMsg" style="margin-top:8px;font-size:14px">Removes old dogs, positions, events and their photos and clips. Zones and videos stay.</p>
+        </div>
+        <div class="sheet">
+          <h3>Download the data</h3>
+          <div class="links">
+            <a id="expDogs" href="/api/export/dogs.csv">Dogs (CSV)</a>
+            <a id="expObs" href="/api/export/observations.csv">Every dog's position, each second (CSV)</a>
+            <a id="expEvents" href="/api/export/events.csv">Events and alerts (CSV)</a>
+            <a href="/docs" id="apiDocs">API reference</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
 </main>
 
 <script>
@@ -208,8 +443,11 @@ const $ = (id) => document.getElementById(id);
 // Devices other than this laptop open the page with ?token=... (printed by the server).
 const TOKEN = new URLSearchParams(location.search).get("token");
 const withToken = (url) => TOKEN ? url + (url.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(TOKEN) : url;
-let current = null;
-let sources = [];
+const ACTS = ["RESTING", "WALKING", "RUNNING"];
+const ACT_NAME = { RESTING: "Resting", WALKING: "Walking", RUNNING: "Running" };
+const ACT_VAR = { RESTING: "--rest", WALKING: "--walk", RUNNING: "--run" };
+const ALERT_TYPES = ["zone_entered", "dog_running_at_person", "dog_pack"];
+let current = null, sources = [], view = "live", unseenAlerts = 0, lastAlertSeen = Date.now() / 1000;
 
 async function api(path, opts = {}) {
   const headers = { "Content-Type": "application/json" };
@@ -218,217 +456,134 @@ async function api(path, opts = {}) {
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
   return r.status === 204 ? null : r.json();
 }
+const fmtTime = (ts) => new Date(ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" });
+const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const dur = (s) => s < 60 ? `${Math.round(s)}s` : s < 3600 ? `${Math.floor(s / 60)}m ${Math.round(s % 60)}s` : `${(s / 3600).toFixed(1)}h`;
+const cssVar = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 
-function fmtTime(ts) { return new Date(ts * 1000).toLocaleTimeString(); }
-function esc(s) { return String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+// -- pages --------------------------------------------------------------------------
+function show(name) {
+  view = name;
+  document.querySelectorAll("nav.views button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.view === name)));
+  document.querySelectorAll("[data-panel]").forEach(p => p.hidden = p.dataset.panel !== name);
+  if (location.hash.slice(1) !== name) history.pushState(null, "", location.search + "#" + name);
+  if (name === "live") { unseenAlerts = 0; lastAlertSeen = Date.now() / 1000; paintAlertCount(); drawOverlay(); }
+  if (name === "activity") loadAnalytics();
+  if (name === "dogs") loadDogs();
+  if (name === "settings") loadStorage();
+}
+document.querySelectorAll("nav.views button").forEach(b => b.onclick = () => show(b.dataset.view));
+document.querySelector("nav.views").onkeydown = (e) => {
+  if (!["ArrowLeft", "ArrowRight"].includes(e.key)) return;
+  const tabs = [...document.querySelectorAll("nav.views button")], i = tabs.findIndex(t => t.dataset.view === view);
+  const next = tabs[(i + (e.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length];
+  show(next.dataset.view); next.focus();
+};
+document.addEventListener("click", (e) => {
+  const go = e.target.closest("[data-go]");
+  if (!go) return;
+  show(go.dataset.go);
+  if (go.dataset.then === "phone") { $("phoneSheet").scrollIntoView({ block: "start" }); $("phoneBtn")?.click(); }
+});
+function paintAlertCount() {
+  $("alertCount").hidden = !unseenAlerts;
+  $("alertCount").textContent = unseenAlerts;
+}
 
+// -- cameras ------------------------------------------------------------------------
 async function loadSources() {
   sources = await api("/api/sources");
   if (!sources.find(s => s.id === current)) current = sources[0]?.id || null;
-  const tabs = $("tabs");
-  tabs.innerHTML = sources.length ? "" : '<span class="muted">No cameras yet.</span>';
-  for (const s of sources) {
-    const b = document.createElement("button");
-    b.className = "tab" + (s.id === current ? " on" : "");
-    b.textContent = `${s.name} (${s.status})`;
-    b.onclick = () => { current = s.id; showStream(); loadSources(); };
-    tabs.appendChild(b);
-  }
-  if (current) {
-    const src = sources.find(s => s.id === current);
-    const recording = src && src.recording && src.recording.active;
-    const rec = document.createElement("button");
-    rec.className = recording ? "ghost" : "tab";
-    rec.textContent = recording ? `■ Stop recording (${src.recording.seconds}s)` : "● Record";
-    rec.title = "Saves the clean camera video to recordings/captures/ (for training clips)";
-    rec.onclick = async () => {
-      try {
-        if (recording) {
-          const r = await api(`/api/sources/${current}/recording`, { method: "DELETE" });
-          $("addError").innerHTML = `<span class="muted">Saved ${esc(r.file)} (${r.seconds}s, ${r.size_mb} MB):
-            <a href="${withToken(r.url)}" download>download</a></span>`;
-          loadVideos();
-        } else {
-          await api(`/api/sources/${current}/recording`, { method: "POST", body: "{}" });
-        }
-      } catch (err) { $("addError").textContent = err.message; }
-      loadSources();
-    };
-    tabs.appendChild(rec);
-    const rm = document.createElement("button");
-    rm.className = "ghost"; rm.textContent = "Remove";
-    rm.onclick = async () => { await api(`/api/sources/${current}`, { method: "DELETE" }); current = null; showStream(); loadSources(); };
-    tabs.appendChild(rm);
-  }
+  const tabs = $("camTabs");
+  tabs.innerHTML = sources.map(s => `<button class="camtab" data-id="${esc(s.id)}" aria-pressed="${s.id === current}">
+      <i class="${esc(s.status)}"></i>${esc(s.name)}</button>`).join("")
+    + `<button class="camtab add" data-go="cameras">Add camera</button>`;
+  tabs.querySelectorAll("button[data-id]").forEach(b => b.onclick = () => {
+    if (b.dataset.id === current) return;
+    current = b.dataset.id; cancelDrawing(); loadSources(); loadAnalytics();
+  });
+  const src = sources.find(s => s.id === current);
+  const recording = !!(src && src.recording && src.recording.active);
+  $("camTools").hidden = !src;
+  $("recBtn").textContent = recording ? "Stop recording" : "Record";
+  $("recBadge").hidden = !recording;
+  if (recording) $("recBadge").querySelector("span").textContent = `Recording ${dur(src.recording.seconds)}`;
   showStream();
 }
 
 function showStream() {
   const want = current ? withToken(`/api/sources/${current}/stream.mjpg`) : "";
   const img = $("video");
+  img.hidden = !want; $("noCamera").hidden = !!want;
   if (img.dataset.src !== want) { img.dataset.src = want; img.src = want || ""; loadZones(); }
 }
+$("video").onload = drawOverlay;
 
-// -- zones ---------------------------------------------------------------------
-const ALERT_TYPES = ["zone_entered", "dog_running_at_person", "dog_pack"];
-let drawing = false, draft = [], zones = [];
-
-// Where the picture actually is inside the <img> (object-fit: contain adds bars).
-function pictureRect() {
-  const img = $("video"), r = img.getBoundingClientRect();
-  const nw = img.naturalWidth || 16, nh = img.naturalHeight || 9;
-  const scale = Math.min(r.width / nw, r.height / nh);
-  const w = nw * scale, h = nh * scale;
-  return { left: (r.width - w) / 2, top: (r.height - h) / 2, w, h, boxW: r.width, boxH: r.height };
-}
-
-function drawOverlay() {
-  const svg = $("drawLayer"), p = pictureRect();
-  svg.setAttribute("viewBox", `0 0 ${p.boxW} ${p.boxH}`);
-  const toPx = ([x, y]) => `${p.left + x * p.w},${p.top + y * p.h}`;
-  let out = "";
-  if (drawing || draft.length) {
-    out += `<polygon points="${draft.map(toPx).join(" ")}" fill="rgba(37,99,235,.25)" stroke="#2563eb" stroke-width="2"/>`;
-    out += draft.map(pt => { const [cx, cy] = toPx(pt).split(","); return `<circle cx="${cx}" cy="${cy}" r="5" fill="#2563eb"/>`; }).join("");
-  }
-  svg.innerHTML = out;
-}
-
-function setDrawing(on) {
-  drawing = on;
-  $("vwrap").classList.toggle("drawing", on);
-  $("video").style.pointerEvents = on ? "auto" : "";
-  $("drawBtn").textContent = on ? "Drawing… (click corners)" : "Draw a zone";
-  $("saveZone").disabled = draft.length < 3;
-  drawOverlay();
-}
-
-$("drawBtn").onclick = () => {
-  if (!current) { $("zoneHint").textContent = "Add a camera first."; return; }
-  setDrawing(!drawing);
-};
-$("clearZone").onclick = () => { draft = []; setDrawing(false); };
-$("video").onclick = (e) => {
-  if (!drawing) return;
-  const r = $("video").getBoundingClientRect(), p = pictureRect();
-  const x = (e.clientX - r.left - p.left) / p.w, y = (e.clientY - r.top - p.top) / p.h;
-  if (x < 0 || x > 1 || y < 0 || y > 1 || draft.length >= 20) return;
-  draft.push([+x.toFixed(4), +y.toFixed(4)]);
-  setDrawing(true);
-};
-window.addEventListener("resize", drawOverlay);
-
-$("zoneForm").onsubmit = async (e) => {
-  e.preventDefault();
-  if (!current || draft.length < 3) return;
-  const name = $("zoneName").value.trim() || `Zone ${zones.length + 1}`;
+$("recBtn").onclick = async () => {
+  const src = sources.find(s => s.id === current);
   try {
-    await api(`/api/sources/${current}/zones`, { method: "POST", body: JSON.stringify({ name, points: draft }) });
-    draft = []; $("zoneName").value = ""; setDrawing(false); loadZones();
-    $("zoneHint").textContent = `Saved "${name}". You'll get an alert when a dog walks into it.`;
-  } catch (err) { $("zoneHint").textContent = err.message; }
+    if (src && src.recording && src.recording.active) {
+      const r = await api(`/api/sources/${current}/recording`, { method: "DELETE" });
+      addEventNote(`Saved recording ${r.file} (${dur(r.seconds)}, ${r.size_mb} MB)`, withToken(r.url), "download");
+      loadVideos();
+    } else {
+      await api(`/api/sources/${current}/recording`, { method: "POST", body: "{}" });
+    }
+  } catch (err) { addEventNote(err.message); }
+  loadSources();
+};
+$("removeBtn").onclick = async () => {
+  const src = sources.find(s => s.id === current);
+  if (!src || !confirm(`Remove the camera "${src.name}"? Its dogs and events stay saved.`)) return;
+  await api(`/api/sources/${current}`, { method: "DELETE" });
+  current = null; cancelDrawing(); loadSources();
 };
 
-async function loadZones() {
-  if (!current) { zones = []; $("zones").innerHTML = ""; return; }
-  zones = await api(`/api/sources/${current}/zones`).catch(() => []);
-  $("zones").innerHTML = zones.map(z => `<li><span>${esc(z.name)} <span class="muted">(${z.points.length} corners)</span></span>
-    <button class="ghost" data-z="${z.id}">Delete</button></li>`).join("") || '<li class="muted">No zones on this camera.</li>';
-  $("zones").querySelectorAll("button[data-z]").forEach(b => b.onclick = async () => {
-    await api(`/api/zones/${b.dataset.z}`, { method: "DELETE" }); loadZones();
-  });
+// A note at the top of the feed for things this page did (recordings saved, errors).
+let notes = [];
+function addEventNote(text, url, label) {
+  notes.unshift({ ts: Date.now() / 1000, text, url, label });
+  notes = notes.slice(0, 3);
+  loadEvents();
 }
 
 $("addForm").onsubmit = async (e) => {
   e.preventDefault();
-  $("addError").textContent = "Opening camera…";
+  $("addError").textContent = "Opening the camera…";
   try {
     const s = await api("/api/sources", { method: "POST", body: JSON.stringify({ source: $("srcInput").value }) });
     current = s.id; $("srcInput").value = ""; $("addError").textContent = "";
-    loadSources();
+    await loadSources(); show("live");
   } catch (err) { $("addError").textContent = err.message; }
 };
 
-$("scanCams").onclick = async (e) => {
-  e.preventDefault();
-  $("localCams").textContent = "Scanning…";
+$("scanCams").onclick = async () => {
+  $("localCams").innerHTML = '<span class="muted">Looking…</span>';
   try {
     const cams = await api("/api/cameras/local");
     $("localCams").innerHTML = cams.length
-      ? "Found: " + cams.map(c => `<a href="#" data-i="${c.index}">webcam ${c.index}${c.width ? ` (${c.width}×${c.height})` : ""}${c.in_use ? " – in use" : ""}</a>`).join(" · ")
-      : "No webcams found.";
-    $("localCams").querySelectorAll("a[data-i]").forEach(a => a.onclick = (ev) => { ev.preventDefault(); $("srcInput").value = a.dataset.i; });
-  } catch (err) { $("localCams").textContent = err.message; }
+      ? cams.map(c => `<button type="button" data-i="${c.index}">Webcam ${c.index}${c.width ? ` (${c.width}×${c.height})` : ""}${c.in_use ? ", in use" : ""}</button>`).join("")
+      : '<span class="muted">No webcams found. Plug in the phone and try again.</span>';
+    $("localCams").querySelectorAll("button[data-i]").forEach(b => b.onclick = () => { $("srcInput").value = b.dataset.i; $("srcInput").focus(); });
+  } catch (err) { $("localCams").innerHTML = `<span class="error">${esc(err.message)}</span>`; }
 };
 
-$("phoneBtn").onclick = async (e) => {
-  e.preventDefault();
+$("phoneBtn").onclick = async () => {
   const info = await api("/api/phone-link");
-  if (!info.enabled) { $("phoneBox").innerHTML = `<span class="muted">${esc(info.hint)}</span>`; return; }
-  if (!info.urls.length) { $("phoneBox").innerHTML = '<span class="error">No Wi-Fi address found. Connect this laptop to Wi-Fi or a phone hotspot.</span>'; return; }
-  $("phoneBox").innerHTML = `<div class="qr"><img src="${withToken(info.qr_url)}" alt="QR code to open the phone camera page">
-    <div><p style="margin:0 0 6px">1. Phone on the same Wi-Fi as this laptop.<br>2. Scan with the phone camera.<br>
-    3. Accept the security warning (self-signed certificate).<br>4. Tap <b>Start camera</b>.</p>
-    <p class="muted" style="margin:0">Or type: <code>${esc(info.urls[0])}</code></p></div></div>`;
+  if (!info.enabled) { $("phoneBox").innerHTML = `<p class="muted">${esc(info.hint)}</p>`; return; }
+  if (!info.urls.length) { $("phoneBox").innerHTML = '<p class="error">This laptop has no Wi-Fi address. Connect it to Wi-Fi or a phone hotspot, then reload.</p>'; return; }
+  $("phoneBox").innerHTML = `<div class="qr"><img src="${withToken(info.qr_url)}" alt="QR code that opens the phone camera page">
+    <div><ol><li>Join the phone to the same Wi-Fi as this laptop.</li><li>Scan the code with the phone camera.</li>
+    <li>Accept the security warning. The laptop uses its own certificate.</li><li>Tap <b>Start camera</b>.</li></ol>
+    <p class="muted" style="margin-top:8px;font-size:14px">Or type <code>${esc(info.urls[0])}</code></p></div></div>`;
 };
 
-async function loadSettings() {
-  const s = await api("/api/settings");
-  $("conf").value = s.confidence; $("confVal").textContent = s.confidence.toFixed(2);
-  if (![...$("imgsz").options].some(o => Number(o.value) === s.imgsz))
-    $("imgsz").add(new Option(String(s.imgsz), s.imgsz));
-  $("imgsz").value = s.imgsz;
-}
-$("imgsz").onchange = () => api("/api/settings", { method: "PATCH", body: JSON.stringify({ imgsz: Number($("imgsz").value) }) });
-$("conf").oninput = () => $("confVal").textContent = Number($("conf").value).toFixed(2);
-$("conf").onchange = () => api("/api/settings", { method: "PATCH", body: JSON.stringify({ confidence: Number($("conf").value) }) });
-
-let selectedDog = null;
-async function loadSide() {
-  const sort = $("dogSort").value;
-  const [dogs, events, act] = await Promise.all([api(`/api/dogs?limit=24&sort=${sort}`), api("/api/events?limit=40"), api("/api/stats/activity")]);
-  $("dogs").innerHTML = dogs.map(d => `<figure data-id="${d.id}" class="${d.id === selectedDog ? "sel" : ""}">${d.snapshot_url ? `<img src="${withToken(d.snapshot_url + "?t=" + Math.floor(d.last_seen))}" alt="Dog ${d.id}">` : ""}
-    <figcaption>#${d.id} · ${d.seconds_visible}s</figcaption></figure>`).join("") || '<span class="muted">None yet.</span>';
-  if (selectedDog) loadDog(selectedDog);
-  $("events").innerHTML = events.map(e => `<li class="${ALERT_TYPES.includes(e.type) ? "alert" : ""}">
-    <span class="muted">${fmtTime(e.ts)}</span> ${ALERT_TYPES.includes(e.type) ? "⚠ " : ""}${esc(e.message)}
-    ${e.snapshot_url ? ` <a href="${withToken(e.snapshot_url)}" target="_blank">photo</a>` : ""}
-    ${e.clip_url ? ` <a href="${withToken(e.clip_url)}" target="_blank">clip</a>` : ""}</li>`).join("") || '<li class="muted">None yet.</li>';
-  const s = act.seconds, total = s.RESTING + s.WALKING + s.RUNNING;
-  $("actBar").innerHTML = total ? ["RESTING","WALKING","RUNNING"].map(a => `<div class="${a}" style="width:${100*s[a]/total}%"></div>`).join("") : "";
-  $("actText").textContent = total ? `Resting ${s.RESTING}s · Walking ${s.WALKING}s · Running ${s.RUNNING}s` : "No data yet.";
-}
-
-function connectWs() {
-  const ws = new WebSocket(withToken(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/live`));
-  ws.onmessage = (m) => {
-    const data = JSON.parse(m.data);
-    const live = current && data.sources[current];
-    $("stats").innerHTML = live
-      ? `<span>Status <b>${live.status}</b></span><span>Camera <b>${live.camera_fps}</b> fps</span>
-         <span>Detector <b>${live.inference_fps}</b> fps</span><span>Dogs <b>${live.dogs.length}</b></span>
-         <span>People <b>${live.people}</b></span><span>${live.frame_width}×${live.frame_height}</span>
-         ${live.error ? `<span class="error">${esc(live.error)}</span>` : ""}`
-      : "";
-    $("liveDogs").innerHTML = live && live.dogs.length
-      ? live.dogs.map(d => `<tr><td>#${d.dog_id}</td><td><span class="pill ${d.activity}">${d.activity}</span>
-          ${d.behaviour && d.behaviour !== d.activity ? `<span class="muted">${esc(d.behaviour)}</span>` : ""}
-          ${d.behaviour_conf ? `<span class="muted">${Math.round(d.behaviour_conf * 100)}%</span>` : ""}</td>
-          <td>${d.speed.toFixed(2)}</td><td>${(d.confidence*100).toFixed(0)}%</td><td>${d.seconds_visible}s</td>
-          <td>${esc((d.zones || []).join(", ") || "–")}</td></tr>`).join("")
-      : '<tr><td colspan="6" class="muted">No dogs in view.</td></tr>';
-    if (data.events.length) { loadSide(); loadSources(); }
-  };
-  ws.onclose = () => setTimeout(connectWs, 2000);
-}
-
-// -- uploads ---------------------------------------------------------------------
 async function loadVideos() {
   const vids = await api("/api/uploads").catch(() => []);
-  $("videos").innerHTML = vids.length ? "Videos: " + vids.slice(0, 6).map((v, i) =>
-    `<a href="#" data-v="${i}">${esc(v.name)}</a> (${v.size_mb} MB)`).join(" · ") : "";
-  $("videos").querySelectorAll("a[data-v]").forEach(a => a.onclick = (e) => {
-    e.preventDefault(); $("srcInput").value = vids[a.dataset.v].source; });
+  $("videos").innerHTML = vids.slice(0, 8).map((v, i) => `<button type="button" data-v="${i}" title="Play as a camera">${esc(v.name)} <span class="muted">${v.size_mb} MB</span></button>`).join("");
+  $("videos").querySelectorAll("button[data-v]").forEach(b => b.onclick = async () => {
+    $("srcInput").value = vids[b.dataset.v].source; $("addForm").requestSubmit();
+  });
 }
 $("upload").onchange = async () => {
   const file = $("upload").files[0];
@@ -439,88 +594,167 @@ $("upload").onchange = async () => {
     const r = await fetch(`/api/uploads?start=1&filename=${encodeURIComponent(file.name)}`, { method: "POST", body: file, headers });
     const data = await r.json();
     if (!r.ok) throw new Error(data.detail || r.statusText);
-    $("addError").textContent = ""; current = data.source_id; loadSources(); loadVideos();
+    $("addError").textContent = ""; current = data.source_id; await loadSources(); loadVideos(); show("live");
   } catch (err) { $("addError").textContent = err.message; }
   $("upload").value = "";
 };
 
-// -- model -----------------------------------------------------------------------
-async function loadModels() {
-  const m = await api("/api/models");
-  $("model").innerHTML = m.available.map(x => `<option ${x.current ? "selected" : ""}>${esc(x.name)}</option>`).join("");
-  const met = m.current_info && m.current_info.metrics;
-  $("modelInfo").textContent = met
-    ? Object.entries(met).filter(([, v]) => typeof v !== "object").slice(0, 4).map(([k, v]) => `${k}: ${v}`).join(" · ")
-    : "No test results saved for this model yet (models/<name>.json).";
-  const b = m.behaviour;
-  $("useBeh").disabled = !b.loaded;
-  $("useBeh").checked = b.in_use;
-  $("behInfo").textContent = !b.loaded
-    ? "Not trained yet: using speed thresholds. See training/behaviour."
-    : `${b.labels.join(" / ")}` + (b.metrics ? ` · accuracy ${b.metrics.accuracy} · macro F1 ${b.metrics.macro_f1}` : "");
-}
-$("useBeh").onchange = async () => {
-  await api("/api/settings", { method: "PATCH", body: JSON.stringify({ use_behaviour_model: $("useBeh").checked }) });
-  loadModels();
-};
-$("model").onchange = async () => {
-  $("modelInfo").textContent = "Loading model…";
-  try { await api("/api/models/select", { method: "POST", body: JSON.stringify({ name: $("model").value }) }); }
-  catch (err) { alert(err.message); }
-  loadModels();
-};
+// -- zones --------------------------------------------------------------------------
+let drawing = false, draft = [], zones = [];
 
-// -- analytics -------------------------------------------------------------------
-async function loadAnalytics() {
-  const q = current ? `&source_id=${current}` : "";
-  const [sum, heat, sp] = await Promise.all([
-    api("/api/stats/summary?minutes=60"), api(`/api/stats/heatmap?minutes=60${q}`), api(`/api/stats/speeds?minutes=60${q}`)]);
-  $("summary").innerHTML = `<div><b>${sum.dogs_seen}</b>dogs</div><div><b>${sum.alerts}</b>alerts</div>
-    <div><b>${sum.busiest_hour ?? "–"}${sum.busiest_hour != null ? ":00" : ""}</b>busiest</div>`;
-  const c = $("heat"), ctx = c.getContext("2d");
-  ctx.clearRect(0, 0, c.width, c.height);
-  const cw = c.width / heat.cols, ch = c.height / heat.rows;
-  heat.grid.forEach((row, y) => row.forEach((n, x) => {
-    if (!n) return;
-    ctx.fillStyle = `rgba(229, 72, 42, ${0.15 + 0.85 * n / heat.max})`;
-    ctx.fillRect(x * cw, y * ch, cw, ch);
-  }));
-  const top = Math.max(1, ...sp.counts);
-  $("hist").innerHTML = sp.counts.map((n, i) => `<div title="${sp.edges[i]}–${sp.edges[i + 1]}: ${n}s" style="height:${100 * n / top}%"></div>`).join("");
-  $("histText").textContent = `0 → ${sp.edges[sp.edges.length - 1]}+ · resting < 0.25 ≤ walking < 1.5 ≤ running`;
+// Where the picture actually is inside the <img> (object-fit: contain adds bars).
+function pictureRect() {
+  const img = $("video"), r = img.getBoundingClientRect();
+  const nw = img.naturalWidth || 16, nh = img.naturalHeight || 9;
+  const scale = Math.min(r.width / nw, r.height / nh);
+  const w = nw * scale, h = nh * scale;
+  return { left: (r.width - w) / 2, top: (r.height - h) / 2, w, h, boxW: r.width, boxH: r.height };
+}
+function drawOverlay() {
+  const svg = $("drawLayer"), p = pictureRect();
+  if (!p.boxW) return;
+  svg.setAttribute("viewBox", `0 0 ${p.boxW} ${p.boxH}`);
+  const toPx = ([x, y]) => [p.left + x * p.w, p.top + y * p.h];
+  svg.innerHTML = draft.length ? `<polygon points="${draft.map(pt => toPx(pt).join(",")).join(" ")}" fill="rgba(240,162,2,.28)" stroke="#F0A202" stroke-width="2.5"/>`
+    + draft.map(pt => { const [cx, cy] = toPx(pt); return `<circle cx="${cx}" cy="${cy}" r="6" fill="#F0A202" stroke="#232B27" stroke-width="2"/>`; }).join("") : "";
+}
+function setDrawing(on) {
+  drawing = on;
+  $("frame").classList.toggle("drawing", on);
+  $("video").style.pointerEvents = on ? "auto" : "";
+  $("zoneForm").hidden = !on;
+  $("drawBtn").setAttribute("aria-pressed", String(on));
+  $("saveZone").disabled = draft.length < 3;
+  $("zoneHint").textContent = draft.length < 3
+    ? `Click ${3 - draft.length} more corner${draft.length === 2 ? "" : "s"} on the video.`
+    : `${draft.length} corners. Name the zone and save it, or keep clicking to add corners.`;
+  drawOverlay();
+}
+function cancelDrawing() { draft = []; setDrawing(false); }
+$("drawBtn").onclick = () => { if (drawing) cancelDrawing(); else { setDrawing(true); $("zoneName").focus(); } };
+$("cancelZone").onclick = cancelDrawing;
+$("video").onclick = (e) => {
+  if (!drawing) return;
+  const r = $("video").getBoundingClientRect(), p = pictureRect();
+  const x = (e.clientX - r.left - p.left) / p.w, y = (e.clientY - r.top - p.top) / p.h;
+  if (x < 0 || x > 1 || y < 0 || y > 1 || draft.length >= 20) return;
+  draft.push([+x.toFixed(4), +y.toFixed(4)]);
+  setDrawing(true);
+};
+window.addEventListener("resize", drawOverlay);
+$("zoneForm").onsubmit = async (e) => {
+  e.preventDefault();
+  if (!current || draft.length < 3) return;
+  const name = $("zoneName").value.trim() || `Zone ${zones.length + 1}`;
+  try {
+    await api(`/api/sources/${current}/zones`, { method: "POST", body: JSON.stringify({ name, points: draft }) });
+    $("zoneName").value = ""; cancelDrawing(); loadZones();
+    addEventNote(`Saved the zone "${name}". You'll get an alert when a dog walks in.`);
+  } catch (err) { $("zoneHint").textContent = err.message; }
+};
+async function loadZones() {
+  if (!current) { zones = []; $("zones").innerHTML = '<li class="muted">Pick a camera to see its zones.</li>'; return; }
+  zones = await api(`/api/sources/${current}/zones`).catch(() => []);
+  $("zones").innerHTML = zones.map(z => `<li><span>${esc(z.name)} <span class="muted">${z.points.length} corners</span></span>
+    <button class="danger" data-z="${z.id}">Delete</button></li>`).join("")
+    || '<li class="muted">No zones yet. Use <b>Draw a zone</b> under the video to mark a school gate or a shop front.</li>';
+  $("zones").querySelectorAll("button[data-z]").forEach(b => b.onclick = async () => {
+    await api(`/api/zones/${b.dataset.z}`, { method: "DELETE" }); loadZones();
+  });
 }
 
-// -- dog profile ---------------------------------------------------------------------
-$("dogSort").onchange = loadSide;
+// -- live updates -------------------------------------------------------------------
+let lastEvents = [];
+async function loadEvents() {
+  try { lastEvents = await api("/api/events?limit=40"); } catch { /* keep the last list */ }
+  const noteRows = notes.map(n => `<li><time>${fmtTime(n.ts)}</time><div><span>${esc(n.text)}</span>
+    ${n.url ? `<div><a href="${n.url}" download>${esc(n.label)}</a></div>` : ""}</div></li>`);
+  const rows = lastEvents.map(e => {
+    const alert = ALERT_TYPES.includes(e.type);
+    const links = [e.snapshot_url && `<a href="${withToken(e.snapshot_url)}" target="_blank">Photo</a>`,
+                   e.clip_url && `<a href="${withToken(e.clip_url)}" target="_blank">Clip</a>`].filter(Boolean).join("");
+    return `<li class="${alert ? "alert" : ""}"><time>${fmtTime(e.ts)}</time><div><span>${esc(e.message)}</span>${links ? `<div>${links}</div>` : ""}</div></li>`;
+  });
+  $("events").innerHTML = [...noteRows, ...rows].join("") || '<li class="muted">Nothing has happened yet. Events show up here as dogs come and go.</li>';
+  const fresh = lastEvents.filter(e => ALERT_TYPES.includes(e.type) && e.ts > lastAlertSeen).length;
+  if (view !== "live") { unseenAlerts = fresh; paintAlertCount(); }
+}
+
+let ws = null;
+function connectWs() {
+  ws = new WebSocket(withToken(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/live`));
+  ws.onopen = () => { $("conn").className = "conn on"; $("conn").querySelector("span").textContent = "Live"; };
+  ws.onmessage = (m) => {
+    const data = JSON.parse(m.data);
+    const live = current && data.sources[current];
+    $("readout").innerHTML = live
+      ? `<span><b>${live.dogs.length}</b>dogs</span><span><b>${live.people}</b>people</span>
+         <span><b>${live.inference_fps}</b>detector fps</span><span><b>${live.camera_fps}</b>camera fps</span>
+         ${live.error ? `<span class="error" style="color:#FF9A80">${esc(live.error)}</span>` : ""}`
+      : "";
+    const src = sources.find(s => s.id === current);
+    $("nowTitle").textContent = src ? `On ${src.name} now` : "On camera now";
+    $("liveDogs").innerHTML = live && live.dogs.length
+      ? live.dogs.map(d => {
+          const act = ACT_NAME[d.activity] || d.activity;
+          const beh = d.behaviour && d.behaviour !== d.activity ? `, model says ${esc(String(d.behaviour).toLowerCase())}` : "";
+          const zone = (d.zones || []).join(", ");
+          return `<li class="tag ${esc(d.activity)}"><span class="id">#${d.dog_id}</span>
+            <span class="what"><span class="act ${esc(d.activity)}">${act}</span>${beh}${d.behaviour_conf ? ` ${Math.round(d.behaviour_conf * 100)}%` : ""}</span>
+            <span class="meta">${dur(d.seconds_visible)} in view, speed ${d.speed.toFixed(2)}, ${(d.confidence * 100).toFixed(0)}% sure</span>
+            ${zone ? `<span class="zone">In ${esc(zone)}</span>` : ""}</li>`;
+        }).join("")
+      : `<li class="muted">${current ? "No dogs in view." : "Add a camera to start watching."}</li>`;
+    if (data.events.length) { loadEvents(); loadSources(); if (view === "dogs") loadDogs(); }
+  };
+  ws.onclose = () => {
+    $("conn").className = "conn off"; $("conn").querySelector("span").textContent = "Reconnecting…";
+    setTimeout(connectWs, 2000);
+  };
+}
+
+// -- dogs ---------------------------------------------------------------------------
+let selectedDog = null;
+async function loadDogs() {
+  const dogs = await api(`/api/dogs?limit=48&sort=${$("dogSort").value}`).catch(() => []);
+  $("dogs").innerHTML = dogs.map(d => `<button class="dog" data-id="${d.id}" aria-pressed="${d.id === selectedDog}" aria-label="Dog ${d.id}">
+      <div class="pic">${d.snapshot_url ? `<img src="${withToken(d.snapshot_url + "?t=" + Math.floor(d.last_seen))}" alt="" loading="lazy">` : "No photo"}</div>
+      <div class="cap"><b>#${d.id}</b><span>${dur(d.seconds_visible)}</span></div></button>`).join("")
+    || '<p class="muted">No dogs yet. Once a camera sees a dog, its photo shows up here.</p>';
+  if (selectedDog) loadDog(selectedDog);
+}
+$("dogSort").onchange = loadDogs;
 $("dogs").onclick = (ev) => {
-  const fig = ev.target.closest("figure[data-id]");
-  if (!fig) return;
-  const id = Number(fig.dataset.id);
-  selectedDog = selectedDog === id ? null : id;           // click again to close
-  document.querySelectorAll("#dogs figure").forEach(f => f.classList.toggle("sel", Number(f.dataset.id) === selectedDog));
-  if (selectedDog) loadDog(selectedDog); else $("dogProfile").innerHTML = "";
+  const card = ev.target.closest("button[data-id]");
+  if (!card) return;
+  const id = Number(card.dataset.id);
+  selectedDog = selectedDog === id ? null : id;           // pick again to close
+  document.querySelectorAll("#dogs .dog").forEach(f => f.setAttribute("aria-pressed", String(Number(f.dataset.id) === selectedDog)));
+  if (selectedDog) loadDog(selectedDog);
+  else $("dogProfile").innerHTML = '<h3>No dog picked</h3><p class="muted">Pick a dog to see its path on the camera, how it spent its time and what it did.</p>';
 };
-["expDogs", "expObs", "expEvents", "repHour", "repDay"].forEach(id => $(id).href = withToken($(id).getAttribute("href")));
 
 async function loadDog(id) {
   let d;
   try { d = await api(`/api/dogs/${id}?observations=false`); }
-  catch (err) { $("dogProfile").textContent = err.message; return; }
+  catch (err) { $("dogProfile").innerHTML = `<p class="error">${esc(err.message)}</p>`; return; }
   if (id !== selectedDog) return;
-  const sh = d.activity_share, fmt = (x) => Math.round(100 * x) + "%";
-  $("dogProfile").innerHTML = `<div class="dogprof">
-    ${d.snapshot_url ? `<img src="${withToken(d.snapshot_url)}" alt="Dog ${d.id}">` : "<div></div>"}
-    <div><b>Dog #${d.id}</b> <span class="muted">(${esc(d.source_id)}, track ${d.track_id})</span><br>
-      <span class="muted">${fmtTime(d.first_seen)} → ${fmtTime(d.last_seen)} · ${d.seconds_visible}s</span><br>
-      ${d.main_activity ? `Mostly <span class="pill ${d.main_activity}">${d.main_activity}</span>` : ""}
-      <div class="bar" style="margin:6px 0">${["RESTING","WALKING","RUNNING"].map(a => `<div class="${a}" style="width:${100 * sh[a]}%"></div>`).join("")}</div>
-      <span class="muted">Resting ${fmt(sh.RESTING)} · Walking ${fmt(sh.WALKING)} · Running ${fmt(sh.RUNNING)} · top speed ${d.max_speed.toFixed(2)}</span></div>
-    <canvas id="dogPath" width="320" height="180" title="Where this dog went (colour = activity)"></canvas>
-    <ul>${d.events.slice(0, 8).map(e => `<li><span class="muted">${fmtTime(e.ts)}</span> ${esc(e.message)}
-      ${e.snapshot_url ? ` <a href="${withToken(e.snapshot_url)}" target="_blank">photo</a>` : ""}</li>`).join("")}</ul></div>`;
-  const c = $("dogPath"), ctx = c.getContext("2d"), css = getComputedStyle(document.documentElement);
-  const colour = { RESTING: css.getPropertyValue("--resting"), WALKING: css.getPropertyValue("--walking"), RUNNING: css.getPropertyValue("--running") };
-  ctx.lineWidth = 2;
+  const sh = d.activity_share, pct = (x) => Math.round(100 * x) + "%";
+  $("dogProfile").innerHTML = `
+    <div class="head">${d.snapshot_url ? `<img src="${withToken(d.snapshot_url)}" alt="Dog ${d.id}">` : '<div class="ph"></div>'}
+      <div><h2>Dog #${d.id}</h2><p class="muted">${esc(d.source_id)}, ${fmtTime(d.first_seen)} to ${fmtTime(d.last_seen)}</p>
+      ${d.main_activity ? `<p>Mostly <span class="act ${d.main_activity}">${ACT_NAME[d.main_activity].toLowerCase()}</span></p>` : ""}</div></div>
+    <div class="split">${ACTS.map(a => `<div class="${a}" style="width:${100 * sh[a]}%"></div>`).join("")}</div>
+    <div class="legend">${ACTS.map(a => `<span style="--c:var(${ACT_VAR[a]})">${ACT_NAME[a]} ${pct(sh[a])}</span>`).join("")}</div>
+    <div class="facts"><div><b>${dur(d.seconds_visible)}</b>in view</div><div><b>${d.max_speed.toFixed(2)}</b>top speed</div><div><b>${d.events.length}</b>events</div></div>
+    <h3>Where it went</h3>
+    <canvas id="dogPath" width="480" height="270" aria-label="Path of dog ${d.id} on the camera picture, coloured by activity"></canvas>
+    <p class="muted" style="font-size:13px">White dot: first seen. Red dot: last seen.</p>
+    ${d.events.length ? `<ul class="feed" style="margin-top:12px">${d.events.slice(0, 8).map(e => `<li><time>${fmtTime(e.ts)}</time><div><span>${esc(e.message)}</span>
+      ${e.snapshot_url ? `<div><a href="${withToken(e.snapshot_url)}" target="_blank">Photo</a></div>` : ""}</div></li>`).join("")}</ul>` : ""}`;
+  const c = $("dogPath"), ctx = c.getContext("2d");
+  const colour = Object.fromEntries(ACTS.map(a => [a, cssVar(ACT_VAR[a])]));
+  ctx.lineWidth = 3; ctx.lineCap = "round";
   d.path.forEach((p, i) => {
     const x = p.x * c.width, y = p.y * c.height;
     if (i) {
@@ -528,22 +762,87 @@ async function loadDog(id) {
       ctx.strokeStyle = colour[p.activity] || "#888";
       ctx.beginPath(); ctx.moveTo(q.x * c.width, q.y * c.height); ctx.lineTo(x, y); ctx.stroke();
     }
-    if (i === 0 || i === d.path.length - 1) {
-      ctx.fillStyle = i ? "#e5482a" : "#fff";
-      ctx.beginPath(); ctx.arc(x, y, 4, 0, 2 * Math.PI); ctx.fill();
-    }
+  });
+  [[d.path[0], "#fff"], [d.path[d.path.length - 1], cssVar("--run")]].forEach(([p, fill]) => {
+    if (!p) return;
+    ctx.fillStyle = fill; ctx.strokeStyle = "#232B27"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(p.x * c.width, p.y * c.height, 6, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
   });
 }
 
-// -- storage ---------------------------------------------------------------------------
+// -- activity -----------------------------------------------------------------------
+async function loadAnalytics() {
+  const q = current ? `&source_id=${current}` : "";
+  const src = sources.find(s => s.id === current);
+  $("actScope").textContent = src ? `Dog counts and alerts from all cameras. The map and speeds are for ${src.name}.` : "All cameras.";
+  try {
+    const [sum, heat, sp, act] = await Promise.all([api("/api/stats/summary?minutes=60"), api(`/api/stats/heatmap?minutes=60${q}`),
+      api(`/api/stats/speeds?minutes=60${q}`), api("/api/stats/activity")]);
+    $("summary").innerHTML = `<div><b>${sum.dogs_seen}</b>dogs seen</div><div><b>${sum.alerts}</b>alerts</div>
+      <div><b>${sum.busiest_hour != null ? sum.busiest_hour + ":00" : "None yet"}</b>busiest hour</div>`;
+    const s = act.seconds, total = s.RESTING + s.WALKING + s.RUNNING;
+    $("actBar").innerHTML = total ? ACTS.map(a => `<div class="${a}" style="width:${100 * s[a] / total}%" title="${ACT_NAME[a]} ${dur(s[a])}"></div>`).join("") : "";
+    $("actText").innerHTML = total
+      ? ACTS.map(a => `<span style="--c:var(${ACT_VAR[a]})">${ACT_NAME[a]} ${dur(s[a])}</span>`).join("")
+      : "<span>No dogs seen in the last hour.</span>";
+    const c = $("heat"), ctx = c.getContext("2d");
+    ctx.clearRect(0, 0, c.width, c.height);
+    const cw = c.width / heat.cols, ch = c.height / heat.rows;
+    heat.grid.forEach((row, y) => row.forEach((n, x) => {
+      if (!n) return;
+      ctx.fillStyle = `rgba(213, 66, 42, ${0.15 + 0.85 * n / heat.max})`;
+      ctx.fillRect(x * cw, y * ch, cw - 1, ch - 1);
+    }));
+    const top = Math.max(1, ...sp.counts);
+    $("hist").innerHTML = sp.counts.map((n, i) => `<div title="${sp.edges[i]} to ${sp.edges[i + 1]}: ${n}s" style="height:${100 * n / top}%"></div>`).join("");
+    $("histText").textContent = `Speed in dog-body-heights per second, 0 to ${sp.edges[sp.edges.length - 1]}+. Under 0.25 counts as resting, 1.5 and over as running.`;
+  } catch (err) { $("summary").innerHTML = `<div class="error">${esc(err.message)}</div>`; }
+}
+
+// -- settings -----------------------------------------------------------------------
+async function loadSettings() {
+  const s = await api("/api/settings");
+  $("conf").value = s.confidence; $("confVal").textContent = s.confidence.toFixed(2);
+  if (![...$("imgsz").options].some(o => Number(o.value) === s.imgsz)) $("imgsz").add(new Option(String(s.imgsz), s.imgsz));
+  $("imgsz").value = s.imgsz;
+}
+$("imgsz").onchange = () => api("/api/settings", { method: "PATCH", body: JSON.stringify({ imgsz: Number($("imgsz").value) }) });
+$("conf").oninput = () => $("confVal").textContent = Number($("conf").value).toFixed(2);
+$("conf").onchange = () => api("/api/settings", { method: "PATCH", body: JSON.stringify({ confidence: Number($("conf").value) }) });
+
+async function loadModels() {
+  const m = await api("/api/models");
+  $("model").innerHTML = m.available.map(x => `<option ${x.current ? "selected" : ""}>${esc(x.name)}</option>`).join("");
+  const met = m.current_info && m.current_info.metrics;
+  $("modelInfo").textContent = met
+    ? "Test results: " + Object.entries(met).filter(([, v]) => typeof v !== "object").slice(0, 4).map(([k, v]) => `${k} ${v}`).join(", ")
+    : "No test results saved for this model yet. Run training/detector/evaluate.py to add them.";
+  const b = m.behaviour;
+  $("useBeh").disabled = !b.loaded;
+  $("useBeh").checked = b.in_use;
+  $("behInfo").textContent = !b.loaded
+    ? "Not trained yet, so activity comes from speed. See training/behaviour."
+    : `Knows ${b.labels.join(", ")}` + (b.metrics ? `. Accuracy ${b.metrics.accuracy}, macro F1 ${b.metrics.macro_f1}.` : ".");
+}
+$("useBeh").onchange = async () => {
+  await api("/api/settings", { method: "PATCH", body: JSON.stringify({ use_behaviour_model: $("useBeh").checked }) });
+  loadModels();
+};
+$("model").onchange = async () => {
+  $("modelInfo").textContent = "Loading the model…";
+  try { await api("/api/models/select", { method: "POST", body: JSON.stringify({ name: $("model").value }) }); }
+  catch (err) { $("modelInfo").textContent = err.message; return; }
+  loadModels();
+};
+
 async function loadStorage() {
   try {
     const s = await api("/api/storage");
     $("storeCards").innerHTML = `<div><b>${s.database_mb} MB</b>database</div>
-      <div><b>${s.alert_files.mb} MB</b>alert photos/clips</div><div><b>${s.disk_free_gb} GB</b>disk free</div>`;
-    $("storeText").textContent = `${s.rows.dogs} dogs · ${s.rows.observations.toLocaleString()} positions · ${s.rows.events} events · `
-      + `dog photos ${s.dog_photos.mb} MB · recordings ${(s.captures.mb + s.uploads.mb).toFixed(1)} MB`
-      + (s.keep_days != null ? ` · auto-delete after ${s.keep_days} days` : "");
+      <div><b>${s.alert_files.mb} MB</b>alert photos and clips</div><div><b>${s.disk_free_gb} GB</b>disk free</div>`;
+    $("storeText").textContent = `${s.rows.dogs} dogs, ${s.rows.observations.toLocaleString()} positions and ${s.rows.events} events saved. `
+      + `Dog photos take ${s.dog_photos.mb} MB and recordings ${(s.captures.mb + s.uploads.mb).toFixed(1)} MB.`
+      + (s.keep_days != null ? ` Data older than ${s.keep_days} days is deleted automatically.` : "");
   } catch (err) { $("storeText").textContent = err.message; }
 }
 $("cleanBtn").onclick = async () => {
@@ -551,42 +850,45 @@ $("cleanBtn").onclick = async () => {
   try {
     const body = (dry) => JSON.stringify({ days, dry_run: dry });
     const plan = await api("/api/storage/cleanup", { method: "POST", body: body(true) });
-    if (!plan.dogs && !plan.events && !plan.files && !plan.observations) {
-      $("cleanMsg").textContent = `Nothing older than ${days} days.`; return;
-    }
+    if (!plan.dogs && !plan.events && !plan.files && !plan.observations) { $("cleanMsg").textContent = `Nothing is older than ${days} days.`; return; }
     if (!confirm(`Delete ${plan.dogs} dogs, ${plan.observations} positions, ${plan.events} events and `
                  + `${plan.files} files (${plan.freed_mb} MB) older than ${days} days? This can't be undone.`)) return;
     const r = await api("/api/storage/cleanup", { method: "POST", body: body(false) });
-    $("cleanMsg").textContent = `Deleted ${r.dogs} dogs, ${r.events} events and ${r.files} files (${r.freed_mb} MB freed).`;
-    loadStorage(); loadSide();
+    $("cleanMsg").textContent = `Deleted ${r.dogs} dogs, ${r.events} events and ${r.files} files. ${r.freed_mb} MB freed.`;
+    loadStorage(); loadDogs(); loadEvents();
   } catch (err) { $("cleanMsg").textContent = err.message; }
 };
+["expDogs", "expObs", "expEvents", "repHour", "repDay"].forEach(id => $(id).href = withToken($(id).getAttribute("href")));
 
-// -- insights (bites dataset) --------------------------------------------------------
+// -- bites data ---------------------------------------------------------------------
 function hbars(chart) {
   const top = Math.max(1, ...chart.values);
   return `<div class="hbars">${chart.labels.map((l, i) => `<span>${esc(l)}</span>
-    <i style="width:${100 * chart.values[i] / top}%"></i><span>${chart.values[i]}</span>`).join("")}</div>
-    ${chart.note ? `<p class="muted" style="margin:0 0 6px">${esc(chart.note)}</p>` : ""}`;
+    <i style="width:${100 * chart.values[i] / top}%"></i><span>${chart.values[i].toLocaleString()}</span>`).join("")}</div>
+    ${chart.note ? `<p class="note">${esc(chart.note)}</p>` : ""}`;
 }
 async function loadInsights() {
   try {
     const ins = await api("/api/insights");
     const s = ins.summary;
-    $("insCards").innerHTML = `<div><b>${s.dog_records.toLocaleString()}</b>dog bites</div>
-      <div><b>${Math.round(100 * s.head_bite_share)}%</b>on the head</div><div><b>${s.busiest_month}</b>busiest month</div>`;
+    $("insCards").innerHTML = `<div><b>${s.dog_records.toLocaleString()}</b>dog bites reported</div>
+      <div><b>${Math.round(100 * s.head_bite_share)}%</b>were on the head</div><div><b>${esc(s.busiest_month)}</b>busiest month</div>`;
     const shown = ["by_month", "breeds", "body_part", "by_weekday", "vaccination", "rabies_result"];
-    $("insCharts").innerHTML = shown.map((k, i) => `<details ${i < 2 ? "open" : ""}>
-      <summary>${esc(ins.charts[k].title)}</summary>${hbars(ins.charts[k])}</details>`).join("");
-    $("insSource").textContent = `${s.source}, ${s.years[0]}–${s.years[1]}, ${s.records.toLocaleString()} reports.`;
-  } catch (err) { $("insCharts").textContent = err.message; }
+    $("insCharts").innerHTML = shown.filter(k => ins.charts[k]).map(k => `<div class="sheet"><h3>${esc(ins.charts[k].title)}</h3>
+      <div style="margin-top:10px">${hbars(ins.charts[k])}</div></div>`).join("");
+    $("insSource").textContent = `${s.source}, ${s.years[0]} to ${s.years[1]}, ${s.records.toLocaleString()} reports.`;
+  } catch (err) { $("insCharts").innerHTML = `<p class="error">${esc(err.message)}</p>`; }
 }
 
-loadSources(); loadSettings(); loadSide(); connectWs(); loadVideos(); loadModels(); loadAnalytics(); loadInsights(); loadStorage();
+// -- start --------------------------------------------------------------------------
+const viewFromHash = () => { const v = location.hash.slice(1); return document.querySelector(`[data-panel="${v}"]`) ? v : "live"; };
+window.addEventListener("hashchange", () => { if (viewFromHash() !== view) show(viewFromHash()); });
+show(viewFromHash());
+loadSources().then(loadAnalytics); loadSettings(); loadEvents(); loadDogs(); connectWs(); loadVideos(); loadModels(); loadInsights(); loadStorage();
 setInterval(loadStorage, 60000);
-setInterval(loadSide, 5000);
-setInterval(loadAnalytics, 10000);
-// Keep the recording timer on the Record button moving.
+setInterval(() => { loadEvents(); if (view === "dogs") loadDogs(); }, 5000);
+setInterval(() => { if (view === "activity") loadAnalytics(); }, 10000);
+// Keep the recording timer moving.
 setInterval(() => { const s = sources.find(x => x.id === current); if (s && s.recording && s.recording.active) loadSources(); }, 2000);
 </script>
 </body>

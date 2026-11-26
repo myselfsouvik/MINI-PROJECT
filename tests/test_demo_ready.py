@@ -40,7 +40,7 @@ def make(tmp_path, frontend_dir):
 def test_dashboard_is_served_when_built(tmp_path, dist):
     with TestClient(make(tmp_path, dist), client=LOCAL) as c:
         assert "REACT DASHBOARD" in c.get("/").text
-        assert "test console" in c.get("/console").text
+        assert 'id="dogwatch-console"' in c.get("/console").text
         assert c.get("/assets/app.js").text == "console.log('hi')"
         assert "REACT DASHBOARD" in c.get("/dogs/12").text          # client-side route
         assert c.get("/assets/missing.js").status_code == 404
@@ -67,7 +67,7 @@ def test_other_devices_load_dashboard_but_api_needs_token(tmp_path, dist):
 
 def test_without_build_the_test_console_is_home(tmp_path):
     with TestClient(make(tmp_path, tmp_path / "no-dist"), client=LOCAL) as c:
-        assert "test console" in c.get("/").text
+        assert 'id="dogwatch-console"' in c.get("/").text
         assert c.get("/whatever").status_code == 404
     with TestClient(make(tmp_path, tmp_path / "no-dist"), client=REMOTE) as c:
         assert c.get("/whatever").status_code == 401                    # unknown paths stay locked
