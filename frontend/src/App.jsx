@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { Route, Routes } from "react-router-dom";
 import Layout from "./components/Layout.jsx";
 import Alerts from "./pages/Alerts.jsx";
@@ -8,6 +9,11 @@ import Live from "./pages/Live.jsx";
 import Overview from "./pages/Overview.jsx";
 import Placeholder, { NotFound } from "./pages/Placeholder.jsx";
 
+// The chart pages bring Chart.js, so they load only when opened.
+const Activity = lazy(() => import("./pages/Activity.jsx"));
+const Bites = lazy(() => import("./pages/Bites.jsx"));
+const later = (el) => <Suspense fallback={<p className="muted">Loading…</p>}>{el}</Suspense>;
+
 export default function App() {
   return (
     <Routes>
@@ -17,8 +23,8 @@ export default function App() {
         <Route path="alerts" element={<Alerts />} />
         <Route path="dogs" element={<Dogs />} />
         <Route path="dogs/:id" element={<DogProfile />} />
-        <Route path="activity" element={<Placeholder what="Activity" consoleTab="activity" />} />
-        <Route path="bites" element={<Placeholder what="Bites data" consoleTab="bites" />} />
+        <Route path="activity" element={later(<Activity />)} />
+        <Route path="bites" element={later(<Bites />)} />
         <Route path="cameras" element={<Cameras />} />
         <Route path="settings" element={<Placeholder what="Settings" consoleTab="settings" />} />
         <Route path="welcome" element={<Placeholder what="Guided setup" consoleTab="cameras" />} />
