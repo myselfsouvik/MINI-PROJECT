@@ -85,6 +85,13 @@ def ensure_demo_video(path: str | Path = DEFAULT_VIDEO) -> Path:
     return path
 
 
+def add_demo_zone(db, video: str | Path) -> None:
+    """Give the demo video a zone (once), so zone alerts show up in the demo."""
+    key = f"file:{Path(video).resolve()}"
+    if not db.list_zones(key):
+        db.add_zone(key, DEMO_ZONE["name"], DEMO_ZONE["points"])
+
+
 if __name__ == "__main__":
     p = argparse.ArgumentParser(description="Make the backup demo video")
     p.add_argument("--out", default=str(DEFAULT_VIDEO))

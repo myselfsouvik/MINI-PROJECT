@@ -115,6 +115,8 @@ class AppSettings:
     # Delete dogs, positions, events and their photos/clips older than this many
     # days (checked at start and every hour). None = keep everything.
     keep_days: float | None = None
+    # Backup demo video, started by POST /api/sources/demo (made if missing).
+    demo_video: str = str(ROOT / "recordings" / "demo_street.mp4")
 
 
 PUBLIC_PAGES = {"/", "/phone", "/console"}   # pages with no data in them; the API still needs the token
@@ -548,6 +550,24 @@ def create_app(settings: AppSettings | None = None, initial_sources: list[str] |
             sid = manager.add(url, body.name or f"Phone {body.ip}")
         except (ValueError, RuntimeError) as e:
             raise HTTPException(400, str(e))
+        return manager.describe(sid)
+
+    @app.post("/api/sources/demo", status_code=201)
+    async def add_demo(response: Response):
+        """Watch the backup demo video (made if missing) with its demo zone. Used by the setup."""
+        from backend.demo import add_demo_zone, ensure_demo_video
+
+        video = Path(settings.demo_video).resolve()
+        for sid, p in list(manager.pipelines.items()):
+            if p.camera.kind == "file" and Path(str(p.camera.value)).resolve() == video:
+                response.status_code = 200                                  # already watching it
+                return manager.describe(sid)
+        try:
+            await asyncio.to_thread(ensure_demo_video, video)
+            add_demo_zone(db, video)
+            sid = await asyncio.to_thread(manager.add, str(video), "Demo street video", True)
+        except (OSError, ValueError, RuntimeError) as e:
+            raise HTTPException(400, f"The demo video couldn't be started: {e}")
         return manager.describe(sid)
 
     @app.delete("/api/sources/{source_id}", status_code=204)

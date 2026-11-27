@@ -15,8 +15,7 @@ from fastapi.testclient import TestClient
 
 from backend import doctor
 from backend.app import AppSettings, create_app
-from backend.demo import DEMO_ZONE, make_demo_video
-from backend.server import add_demo_zone
+from backend.demo import DEMO_ZONE, add_demo_zone, make_demo_video
 from tests.test_api import LOCAL, REMOTE, ROOT, TOKEN, wait_for
 
 
@@ -94,13 +93,30 @@ def test_demo_zone_added_once_and_used(tmp_path):
     video = make_demo_video(tmp_path / "demo.mp4", seconds=4)
     app = create_app(AppSettings(storage_dir=str(tmp_path / "storage"), media_dir=str(tmp_path)),
                      initial_sources=[str(video)])
-    add_demo_zone(app, video)
-    add_demo_zone(app, video)
+    add_demo_zone(app.state.db, video)
+    add_demo_zone(app.state.db, video)
     with TestClient(app, client=LOCAL) as c:
         zones = c.get("/api/sources/cam1/zones").json()
         assert [z["name"] for z in zones] == [DEMO_ZONE["name"]]
         # Three dogs at once: the pack alert fires.
         assert wait_for(lambda: [a for a in c.get("/api/alerts").json() if a["type"] == "dog_pack"], timeout=40)
+
+
+def test_demo_video_can_be_started_from_the_dashboard(tmp_path):
+    video = tmp_path / "media" / "demo.mp4"
+    app = create_app(AppSettings(storage_dir=str(tmp_path / "storage"), media_dir=str(tmp_path / "media"),
+                                 demo_video=str(video)))
+    make_demo_video(video, seconds=2)                       # short, so the test is quick
+    with TestClient(app, client=LOCAL) as c:
+        r = c.post("/api/sources/demo")
+        assert r.status_code == 201 and r.json()["kind"] == "file"
+        sid = r.json()["id"]
+        assert [z["name"] for z in c.get(f"/api/sources/{sid}/zones").json()] == [DEMO_ZONE["name"]]
+        again = c.post("/api/sources/demo")                 # second click: same camera, no duplicate
+        assert again.status_code == 200 and again.json()["id"] == sid
+        assert len(c.get("/api/sources").json()) == 1
+    with TestClient(app, client=REMOTE) as c:
+        assert c.post("/api/sources/demo").status_code == 401
 
 
 # -- doctor -------------------------------------------------------------------------------

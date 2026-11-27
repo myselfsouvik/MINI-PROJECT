@@ -62,7 +62,7 @@ def main(argv: list[str] | None = None) -> None:
     args = p.parse_args(argv)
 
     if args.demo:
-        from backend.demo import ensure_demo_video
+        from backend.demo import add_demo_zone, ensure_demo_video
 
         demo_video = ensure_demo_video()
         if str(demo_video) not in args.source:
@@ -80,7 +80,7 @@ def main(argv: list[str] | None = None) -> None:
     Path(args.media_dir).mkdir(parents=True, exist_ok=True)
     app = create_app(settings, initial_sources=args.source)
     if args.demo:
-        add_demo_zone(app, demo_video)
+        add_demo_zone(app.state.db, demo_video)
 
     configs = [uvicorn.Config(app, host=args.host, port=args.port, log_level="warning")]
     print(f"\n  Dashboard: http://127.0.0.1:{args.port}    API docs: http://127.0.0.1:{args.port}/docs")
@@ -120,16 +120,6 @@ def main(argv: list[str] | None = None) -> None:
         asyncio.run(serve_all())
     except KeyboardInterrupt:
         pass
-
-
-def add_demo_zone(app, video: Path) -> None:
-    """Give the demo video a zone (once), so zone alerts show up in the demo."""
-    from backend.demo import DEMO_ZONE
-
-    db = app.state.db
-    key = f"file:{Path(video).resolve()}"
-    if not db.list_zones(key):
-        db.add_zone(key, DEMO_ZONE["name"], DEMO_ZONE["points"])
 
 
 if __name__ == "__main__":
