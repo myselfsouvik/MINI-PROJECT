@@ -38,3 +38,16 @@ export function ago(ts, now = Date.now() / 1000) {
 
 export const plural = (n, one, many = one + "s") => `${n} ${n === 1 ? one : many}`;
 export const pct = (x) => `${Math.round(100 * (Number(x) || 0))}%`;
+
+/** Unix seconds -> "Today 14:05", "Yesterday 09:12" or "25 Nov 18:40". */
+export function dayTime(ts, now = Date.now() / 1000) {
+  const d = new Date(ts * 1000), today = new Date(now * 1000);
+  const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+  const days = Math.round((new Date(today).setHours(0, 0, 0, 0) - new Date(d).setHours(0, 0, 0, 0)) / 86400000);
+  if (days === 0) return `Today ${time}`;
+  if (days === 1) return `Yesterday ${time}`;
+  return `${d.toLocaleDateString([], { day: "numeric", month: "short" })} ${time}`;
+}
+
+/** Dog speed is measured in the dog's own box heights per second. */
+export const speedText = (v) => `${(Number(v) || 0).toFixed(1)} body heights a second`;
