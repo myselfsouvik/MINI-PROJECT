@@ -10,4 +10,6 @@ else
     echo "    python3 -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt"
     exit 1
 fi
+# Builds the dashboard the first time and after a git pull changes it (needs Node.js).
+python -m backend.build_frontend
 exec python -m backend.server --open --phone "$@"
