@@ -9,7 +9,9 @@
 
 ## 1. Where we are now
 
-See `PROGRESS_REPORT.md`. In short: detection, tracking and speed-based activity work as **three separate webcam scripts**, using the **stock YOLO11n model** (not trained by us). The rabies dataset has only 1 positive case, so it can't support a classifier. No dashboard, no phone-camera support, and no evaluation numbers yet.
+*Updated 27 Nov 2026.* The system works end to end: a FastAPI server takes a laptop webcam, a phone over USB or Wi-Fi, a phone's browser via QR code, or a video file; detects and tracks dogs; labels resting / walking / running from normalised speed; raises zone, running-at-person and pack alerts with photo and clip; stores everything in SQLite; and shows it in a browser console with live video, dog profiles, analytics, bites-data charts and settings. 16 pull requests, 142 passing tests.
+
+Still to do: our own trained models (the detector still uses the **stock YOLO11n**, and the behaviour classifier has its scripts but no labelled clips), the dog pose model, recognising the same dog across days, and a proper dashboard app with guided setup. The tools for collecting frames, labelling and evaluating are in `training/`.
 
 ---
 
@@ -136,11 +138,13 @@ MINI-PROJECT/
 
 ## 8. Demo checklist (definition of done)
 
-- [ ] Dashboard opens with one command
-- [ ] Laptop webcam, phone over USB and phone over Wi-Fi/QR all work as sources
-- [ ] Fine-tuned detector shows a measurable improvement over the stock model on our own test set
-- [ ] Behaviour classifier with reported accuracy / F1 / confusion matrix
-- [ ] At least 2 working alert types with snapshots
-- [ ] Analytics and Insights pages show real charts
-- [ ] Backup demo video ready
+*Status on 27 Nov 2026.*
+
+- [x] Dashboard opens with one command (`start.bat`)
+- [x] Laptop webcam, phone over USB and phone over Wi-Fi/QR all work as sources
+- [ ] Fine-tuned detector shows a measurable improvement over the stock model on our own test set (evaluation tools ready, needs labelled footage)
+- [ ] Behaviour classifier with reported accuracy / F1 / confusion matrix (training scripts ready, needs labelled clips)
+- [x] At least 2 working alert types with snapshots (3 types, with photo and clip)
+- [x] Analytics and Insights pages show real charts
+- [x] Backup demo video ready (`start.bat --demo`)
 - [ ] Final report + slides with metrics tables

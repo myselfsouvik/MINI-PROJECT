@@ -1,20 +1,27 @@
 # 🐕 Street Dog Detection, Tracking & Behaviour Analysis
 
-A computer-vision mini project that uses a webcam and **YOLO11** to detect dogs in real time, give each dog a tracking ID, measure how it moves, and log the data for analysis. It also includes a cleaned public-health **animal-bite dataset** for studying dog bites and rabies results.
+A computer-vision mini project that watches street dogs through any camera (laptop webcam, a phone over USB or Wi-Fi, a phone's own browser, or a video file). It uses **YOLO11** to find every dog, follows each one, works out whether it is resting, walking or running, raises alerts, and shows everything live in the browser. It also turns a public **animal-bite dataset** (7,029 dog-bite records) into charts.
+
+**Status (27 Nov 2026):** the system works end to end; our own trained models are the next big step (see the checklist in [PLAN.md](PLAN.md#8-demo-checklist-definition-of-done)).
 
 ## Features
 
-- **Live dog detection**: draws a box around every dog the camera sees and saves a cropped photo.
-- **Per-dog tracking**: each dog gets an ID (`Dog ID: 3`) and its photos are saved separately.
-- **Behaviour analysis**: calculates movement speed and labels each dog's activity as **LOW**, **NORMAL** or **HIGH**.
-- **Data logging**: writes timestamped position, speed and activity data to `dog_features.csv`.
-- **Dataset preprocessing**: filters the animal-bites dataset down to dog records with a known rabies test result.
+- **Any camera, several at once**: laptop webcam, phone over USB (DroidCam / Iriun), phone over Wi-Fi (IP Webcam), a phone's browser by scanning a QR code (no app), or an uploaded video.
+- **Live detection and tracking**: a box and a number on every dog, a motion trail, dog and person counts.
+- **Behaviour**: resting / walking / running from speed measured in dog-body-heights per second (works at any camera distance), smoothed so labels don't flicker. A trained classifier can replace the rule.
+- **Alerts with photo and video clip**: a dog entering a zone you draw (e.g. a school gate), a dog running towards a person, 3+ dogs together.
+- **Dog profiles**: every dog's photo, path on the camera picture, time spent per activity and its events.
+- **Analytics**: activity split, heat map of where dogs spend time, speed chart.
+- **Bites data insights**: charts by month, breed, body part, weekday, vaccination and rabies result.
+- **Reports and export**: printable session report, CSV export of dogs, positions and events.
+- **Demo-ready**: one command start, a backup demo video, a pre-demo laptop check, automatic clean-up of old data.
+- **Tools for training our own models**: frame extraction with pre-filled boxes, detector evaluation (precision, recall, mAP, FPS), behaviour feature extraction and classifier training.
 
 ## Project structure
 
 ```
 MINI-PROJECT/
-├── backend/             # (in progress) FastAPI server, cameras, inference
+├── backend/             # FastAPI server, cameras, inference, storage, console
 │   ├── server.py        # start the web server: python -m backend.server
 │   ├── app.py           # API routes, live video stream, WebSocket
 │   ├── pipeline.py      # detection + tracking + behaviour per camera
@@ -28,7 +35,7 @@ MINI-PROJECT/
 │   └── camera_test.py   # command-line camera checker
 ├── docs/PHONE_CAMERA.md # how to connect a phone as the camera
 ├── tests/               # automated tests (python -m pytest tests)
-├── frontend/            # (in progress) React dashboard
+├── frontend/            # (planned) dashboard app
 ├── training/            # detector/: recordings → pre-labelled frames → evaluation table; behaviour/: clips → features → classifier
 ├── notebooks/           # (in progress) bites dataset EDA
 ├── models/
@@ -65,17 +72,6 @@ pip install -r requirements.txt
 
 ## How to run
 
-The scripts find the model and data files themselves, so you can run them from any folder.
-
-| Command | What happens |
-|---|---|
-| `python legacy/detect.py` | Opens the camera, boxes any dog (confidence ≥ 60%), saves a crop to `legacy/dog_images/` every 3 seconds |
-| `python legacy/dogid.py` | Same, but tracks each dog and saves `dog_ID_<id>_<n>.jpg` every 2 seconds per dog |
-| `python legacy/dog_behaviour.py` | Shows ID, speed and activity level on screen and appends rows to `legacy/dog_features.csv` |
-| `python legacy/preprocessing.py` | Cleans the bites dataset and writes `data/tabular/cleaned_animal_bites_dogs.csv` |
-
-Press **Q** in the camera window to stop.
-
 ### Demo day: one command
 
 ```bash
@@ -85,14 +81,27 @@ start.bat --demo                  # same + backup demo video (3 dogs, demo zone)
 ./start.sh --demo                 # macOS / Linux
 ```
 
-### Backend server (new)
+### Backend server
 
 ```bash
 python -m backend.server --source 0        # or 1 for a USB phone, or a video file
 python -m backend.server --phone           # phones connect from their browser by scanning a QR code
 ```
 
-Open http://127.0.0.1:8000 for live video with dog boxes, activity labels, saved dogs, events and alerts (draw a zone like a school gate on the video and get an alert with a photo when a dog walks in), analytics (heat map, speeds), video upload, a model picker, a **Record** button for collecting training clips and a short video clip with every alert, insights from the animal-bites dataset, a profile for each dog (where it went, how it moved), CSV export, a printable session report, and http://127.0.0.1:8000/docs for the API. Details: [backend/README.md](backend/README.md).
+Open http://127.0.0.1:8000 for the console: **Live** (video, dogs on camera now, alerts, zones), **Dogs** (profiles), **Activity** (charts and session reports), **Cameras** (add a webcam, phone or video), **Bites data** and **Settings** (model, speed, storage, CSV export). API docs are at http://127.0.0.1:8000/docs. Details: [backend/README.md](backend/README.md).
+
+### Original prototype scripts
+
+The scripts in `legacy/` find the model and data files themselves, so you can run them from any folder.
+
+| Command | What happens |
+|---|---|
+| `python legacy/detect.py` | Opens the camera, boxes any dog (confidence ≥ 60%), saves a crop to `legacy/dog_images/` every 3 seconds |
+| `python legacy/dogid.py` | Same, but tracks each dog and saves `dog_ID_<id>_<n>.jpg` every 2 seconds per dog |
+| `python legacy/dog_behaviour.py` | Shows ID, speed and activity level on screen and appends rows to `legacy/dog_features.csv` |
+| `python legacy/preprocessing.py` | Cleans the bites dataset and writes `data/tabular/cleaned_animal_bites_dogs.csv` |
+
+Press **Q** in the camera window to stop.
 
 ### Testing a camera (laptop, phone over USB or Wi-Fi)
 
@@ -113,38 +122,31 @@ python -m pytest tests -q
 
 ## How it works
 
-1. **Detection**: each frame goes through YOLO11-nano. Only COCO class 16 (*dog*) with confidence ≥ 0.60 is kept.
-2. **Tracking**: `model.track(persist=True)` uses YOLO's built-in tracker to keep the same ID on a dog between frames.
-3. **Movement**: the centre of each dog's box is compared with its previous position:
-   `speed = distance moved (px) / time between frames (s)`
-4. **Activity level**:
+1. **Camera**: each camera runs in its own thread and always hands over the newest frame, so a slow laptop skips frames instead of falling behind.
+2. **Detection and tracking**: YOLO11-nano finds dogs (and people, for alerts); ByteTrack keeps the same number on a dog from frame to frame.
+3. **Speed**: how far the centre of the box moved, divided by the box height and the time between frames, gives **dog-body-heights per second**, averaged over about a second.
+4. **Activity**: under 0.25 is resting, under 1.5 is walking, anything faster is running. If a trained behaviour classifier is in `models/`, it is used instead.
+5. **Alerts**: zone, running towards a person, and pack rules run on every frame; each alert saves a photo and a short clip.
+6. **Storage**: dogs, one position per dog per second, and events go into SQLite; the console reads them through the API and a live WebSocket.
 
-   | Speed (px/s) | Activity |
-   |---|---|
-   | < 20 | LOW |
-   | 20 – 80 | NORMAL |
-   | > 80 | HIGH |
-
-### `dog_features.csv` columns
-
-`timestamp, dog_id, center_x, center_y, movement_pixels, speed_pixels_per_second, activity_level, confidence`
+The original prototype scripts in `legacy/` work the old way (pixels per second, LOW / NORMAL / HIGH) and are kept for reference.
 
 ## Dataset
 
-`Health_AnimalBites.csv` is a public animal-bite records dataset (bite date, species, breed, gender, colour, vaccination, body part bitten, quarantine, rabies result). After keeping only dogs with a POSITIVE/NEGATIVE rabies result, **59 records** remain (58 negative, 1 positive), which is too imbalanced to train a classifier on.
+`Health_AnimalBites.csv` is a public animal-bite records dataset from Louisville, Kentucky (bite date, species, breed, gender, colour, vaccination, body part bitten, quarantine, rabies result), with 7,029 dog-bite records from 2010–2017. The **Bites data** page charts them. Only 59 of those records have a rabies test result (58 negative, 1 positive), which is too imbalanced to train a classifier on.
 
 ## Limitations
 
-- Uses the stock pre-trained model; it has not been fine-tuned on street-dog images.
-- Tracking IDs reset every run, and a dog that leaves and re-enters the frame may get a new ID.
-- Speed is in pixels per second, so thresholds depend on camera distance and resolution.
+- The detector is the stock pre-trained model; it has not been fine-tuned on our own street footage yet.
+- The behaviour classifier is built but not trained yet, so activity comes from speed.
+- A dog that leaves the picture and comes back gets a new number.
+- The rabies data has 1 positive case out of 59, so it can't train a classifier; the Insights charts use all 7,029 dog-bite records instead.
 
-## Future work
+## Next steps
 
-- Single `main.py` entry point that also works with video files.
-- Dashboard (e.g. Streamlit) with live feed, charts and dog gallery.
-- Re-identifying the same dog across sessions.
-- Exploratory analysis of the bite dataset (breed, season, vaccination).
+- A dashboard app with separate pages and a guided first-run setup.
+- Record and label our own footage, fine-tune the detector and train the behaviour classifier, with before/after metrics.
+- Recognise the same dog across days, the base for a street-dog census.
 
 ## Team
 
