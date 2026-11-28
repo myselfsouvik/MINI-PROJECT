@@ -4,3 +4,6 @@
 # Scripts need their native line endings
 *.bat text eol=crlf
 *.sh  text eol=lf
+
+# The built dashboard is kept exactly as the build wrote it
+frontend/dist/** -text
