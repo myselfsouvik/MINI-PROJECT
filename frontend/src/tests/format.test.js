@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ago, duration, isAlert, pct, plural } from "../lib/format.js";
+import { ago, dayTime, duration, isAlert, pct, plural } from "../lib/format.js";
 
 describe("formatting", () => {
   it("durations", () => {
@@ -14,6 +14,13 @@ describe("formatting", () => {
     expect(ago(1000, 1010)).toBe("just now");
     expect(ago(1000, 1000 + 600)).toBe("10 min ago");
     expect(ago(1000, 1000 + 7200)).toBe("2 h ago");
+  });
+
+  it("day and time", () => {
+    const noon = new Date(2026, 10, 27, 12, 0).getTime() / 1000;
+    expect(dayTime(noon - 3600, noon)).toBe("Today 11:00");
+    expect(dayTime(noon - 86400, noon)).toBe("Yesterday 12:00");
+    expect(dayTime(noon - 3 * 86400, noon)).toMatch(/24.*Nov.* 12:00|Nov.*24.* 12:00/);
   });
 
   it("alerts and small helpers", () => {

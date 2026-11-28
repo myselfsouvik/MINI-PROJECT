@@ -1,6 +1,9 @@
 import { Route, Routes } from "react-router-dom";
 import Layout from "./components/Layout.jsx";
+import Alerts from "./pages/Alerts.jsx";
 import Cameras from "./pages/Cameras.jsx";
+import DogProfile from "./pages/DogProfile.jsx";
+import Dogs from "./pages/Dogs.jsx";
 import Live from "./pages/Live.jsx";
 import Overview from "./pages/Overview.jsx";
 import Placeholder, { NotFound } from "./pages/Placeholder.jsx";
@@ -11,9 +14,9 @@ export default function App() {
       <Route element={<Layout />}>
         <Route index element={<Overview />} />
         <Route path="live" element={<Live />} />
-        <Route path="alerts" element={<Placeholder what="Alerts" consoleTab="live" />} />
-        <Route path="dogs" element={<Placeholder what="Dogs" consoleTab="dogs" />} />
-        <Route path="dogs/:id" element={<Placeholder what="Dog profiles" consoleTab="dogs" />} />
+        <Route path="alerts" element={<Alerts />} />
+        <Route path="dogs" element={<Dogs />} />
+        <Route path="dogs/:id" element={<DogProfile />} />
         <Route path="activity" element={<Placeholder what="Activity" consoleTab="activity" />} />
         <Route path="bites" element={<Placeholder what="Bites data" consoleTab="bites" />} />
         <Route path="cameras" element={<Cameras />} />
