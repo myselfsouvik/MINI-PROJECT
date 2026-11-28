@@ -7,7 +7,10 @@ import DogProfile from "./pages/DogProfile.jsx";
 import Dogs from "./pages/Dogs.jsx";
 import Live from "./pages/Live.jsx";
 import Overview from "./pages/Overview.jsx";
+import Help from "./pages/Help.jsx";
 import Placeholder, { NotFound } from "./pages/Placeholder.jsx";
+import Settings from "./pages/Settings.jsx";
+import Welcome from "./pages/Welcome.jsx";
 
 // The chart pages bring Chart.js, so they load only when opened.
 const Activity = lazy(() => import("./pages/Activity.jsx"));
@@ -17,6 +20,7 @@ const later = (el) => <Suspense fallback={<p className="muted">Loading…</p>}>{
 export default function App() {
   return (
     <Routes>
+      <Route path="welcome" element={<Welcome />} />
       <Route element={<Layout />}>
         <Route index element={<Overview />} />
         <Route path="live" element={<Live />} />
@@ -26,10 +30,9 @@ export default function App() {
         <Route path="activity" element={later(<Activity />)} />
         <Route path="bites" element={later(<Bites />)} />
         <Route path="cameras" element={<Cameras />} />
-        <Route path="settings" element={<Placeholder what="Settings" consoleTab="settings" />} />
-        <Route path="welcome" element={<Placeholder what="Guided setup" consoleTab="cameras" />} />
+        <Route path="settings" element={<Settings />} />
         <Route path="present" element={<Placeholder what="Presentation view" consoleTab="live" />} />
-        <Route path="help" element={<Placeholder what="Help" consoleTab="live" />} />
+        <Route path="help" element={<Help />} />
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>

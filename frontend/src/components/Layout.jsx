@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
+import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useLive } from "../hooks/live.jsx";
 import { withToken } from "../lib/api.js";
 import { plural } from "../lib/format.js";
+import { setupDone, shouldOpenSetup } from "../lib/setup.js";
 import Icon, { Logo } from "./Icon.jsx";
 
 // Pages grouped by what you're doing: watching, understanding, setting up.
@@ -96,12 +97,20 @@ function TabBar({ unseen, onMenu }) {
 
 export default function Layout() {
   const { pathname } = useLocation();
-  const { unseen, markAlertsSeen } = useLive();
+  const navigate = useNavigate();
+  const { unseen, markAlertsSeen, sources } = useLive();
   const [drawer, setDrawer] = useState(false);
+  const [checked, setChecked] = useState(false);
   const title = pageTitle(pathname);
 
   useEffect(() => { document.title = title === "DogWatch" ? title : `${title} | DogWatch`; }, [title]);
   useEffect(() => { if (pathname === "/alerts") markAlertsSeen(); }, [pathname, markAlertsSeen]);
+  // First visit with nothing connected: open the guided setup once.
+  useEffect(() => {
+    if (checked || !Array.isArray(sources)) return;
+    setChecked(true);
+    if (shouldOpenSetup({ sources, pathname, done: setupDone() })) navigate("/welcome", { replace: true });
+  }, [checked, sources, pathname, navigate]);
   useEffect(() => {
     if (!drawer) return undefined;
     const esc = (e) => e.key === "Escape" && setDrawer(false);
