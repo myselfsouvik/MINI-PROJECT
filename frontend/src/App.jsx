@@ -8,7 +8,8 @@ import Dogs from "./pages/Dogs.jsx";
 import Live from "./pages/Live.jsx";
 import Overview from "./pages/Overview.jsx";
 import Help from "./pages/Help.jsx";
-import Placeholder, { NotFound } from "./pages/Placeholder.jsx";
+import NotFound from "./pages/NotFound.jsx";
+import Present from "./pages/Present.jsx";
 import Settings from "./pages/Settings.jsx";
 import Welcome from "./pages/Welcome.jsx";
 
@@ -21,6 +22,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="welcome" element={<Welcome />} />
+      <Route path="present" element={<Present />} />
       <Route element={<Layout />}>
         <Route index element={<Overview />} />
         <Route path="live" element={<Live />} />
@@ -31,7 +33,6 @@ export default function App() {
         <Route path="bites" element={later(<Bites />)} />
         <Route path="cameras" element={<Cameras />} />
         <Route path="settings" element={<Settings />} />
-        <Route path="present" element={<Placeholder what="Presentation view" consoleTab="live" />} />
         <Route path="help" element={<Help />} />
         <Route path="*" element={<NotFound />} />
       </Route>

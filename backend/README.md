@@ -16,7 +16,7 @@ python -m backend.doctor                            # check this laptop before a
 
 `start.bat` (Windows) / `start.sh` run `--open --phone` with the venv activated; extra arguments are passed on (`start.bat --demo`).
 
-Open **http://127.0.0.1:8000** for the dashboard and **http://127.0.0.1:8000/docs** for interactive API docs. Until the React dashboard is built, `/` shows the DogWatch console (pages: Live, Dogs, Activity, Cameras, Bites data, Settings); the console is always at **/console**, and each page has its own address, e.g. `/console#dogs`.
+Open **http://127.0.0.1:8000** for the dashboard and **http://127.0.0.1:8000/docs** for interactive API docs. The dashboard is the React app in `frontend/` (pages and guided setup: [frontend/README.md](../frontend/README.md)); `start.bat` / `start.sh` build it the first time. If it isn't built (no Node.js), `/` shows the older one-page DogWatch console instead. The console is always at **/console**, and each of its pages has its own address, e.g. `/console#dogs`.
 
 Options: `--phone` (HTTPS server on port 8443 for phones, see [docs/PHONE_CAMERA.md](../docs/PHONE_CAMERA.md)), `--host 0.0.0.0` (reachable from other devices on the Wi-Fi), `--port`, `--model` (swap in a fine-tuned model), `--conf`, `--max-fps` (save CPU), `--imgsz` (detector image size, see *Speed* below), `--keep-days 7` (auto-delete data older than 7 days, see *Storage* below).
 
@@ -36,7 +36,7 @@ Options: `--phone` (HTTPS server on port 8443 for phones, see [docs/PHONE_CAMERA
 | `db.py` | SQLite tables `dogs`, `observations` (1 per dog per second), `events` (with `snapshot` and `clip`), `zones` |
 | `app.py` | FastAPI routes, MJPEG stream, WebSocket |
 | `server.py` | Command-line entry point |
-| `static/index.html` | DogWatch console: one HTML file, no build step (the React dashboard in `frontend/` replaces it at `/` once built) |
+| `static/index.html` | The older one-page DogWatch console, no build step. At `/console`, and at `/` when the React dashboard isn't built |
 | `static/phone.html` | Page the phone opens: streams its camera to the laptop |
 | `phone.py` | Wi-Fi address, self-signed HTTPS certificate, QR code |
 | `security.py` | Access token and checks on what can be opened as a camera |
@@ -65,7 +65,7 @@ Runtime data (database + dog snapshots) is written to `backend/storage/` and is 
 | GET | `/api/export/{dogs,observations,events}.csv?minutes=` | download as CSV for the report / Excel / pandas; times also in local `YYYY-MM-DD HH:MM:SS` columns |
 | GET | `/api/events?limit=&type=&after_id=` | `source_added`, `dog_appeared`, `dog_left`, … |
 | GET | `/api/stats/activity?minutes=60` | seconds spent RESTING / WALKING / RUNNING |
-| GET | `/api/stats/timeline?minutes=60&bucket=60&source_id=` | `buckets: [{start, RESTING, WALKING, RUNNING}]` dog-seconds per time bucket (stacked chart) |
+| GET | `/api/stats/timeline?minutes=60&bucket=60&source_id=&align=&utc_offset=` | `buckets: [{start, RESTING, WALKING, RUNNING}]` dog-seconds per time bucket (stacked chart), plus `since` and `count`. With `align=true` the buckets start on round local times (`utc_offset` = the viewer's minutes ahead of UTC, e.g. 330 for India) |
 | GET | `/api/stats/speeds?minutes=60&bin_width=0.25&max_speed=4&source_id=` | `{edges, counts}` speed histogram; last bin = max_speed and above |
 | GET | `/api/stats/heatmap?minutes=60&cols=16&rows=9&source_id=` | `{grid, max}` dog-seconds per cell over the camera view (row 0 = top) |
 | GET | `/api/stats/summary?minutes=1440` | `{dogs_seen, alerts, events: {type: n}, busiest_hour, activity_seconds}` for dashboard cards |
@@ -95,7 +95,7 @@ Runtime data (database + dog snapshots) is written to `backend/storage/` and is 
 
 CORS is open for the Vite dev server on `http://localhost:5173`.
 
-**Serving the dashboard.** After `npm run build` in `frontend/`, the server serves `frontend/dist` at `/` (one command for the demo, no Node needed on demo day). Unknown page paths like `/dogs/12` get `index.html`, so React Router works. Paths under `/api`, `/ws`, `/media` and `/docs` are never served from the build. Other devices can load the dashboard files without the token, but every API call needs it. The page should read `?token=` from its own URL and send it as `X-Access-Token`, like the console does.
+**Serving the dashboard.** After `npm run build` in `frontend/`, the server serves `frontend/dist` at `/` (one command for the demo, no Node needed on demo day). Unknown page paths like `/dogs/12` get `index.html`, so React Router works. Paths under `/api`, `/ws`, `/media` and `/docs` are never served from the build. Other devices can load the dashboard files without the token, but every API call needs it. The dashboard reads `?token=` from its own URL and sends it as `X-Access-Token`, like the console does.
 
 ## Access and safety
 

@@ -114,6 +114,17 @@ def test_stats_endpoints_when_empty(client):
     assert client.get("/api/stats/timeline?minutes=600&bucket=5").status_code == 400   # too many buckets
 
 
+def test_timeline_can_start_on_whole_hours(client):
+    # India is 330 minutes ahead of UTC: half-hour buckets must start on :00 or :30 there.
+    t = client.get("/api/stats/timeline?minutes=1440&bucket=1800&align=true&utc_offset=330").json()
+    assert (t["since"] + 330 * 60) % 1800 == 0
+    assert t["count"] == 49                        # the 48 of the last 24 hours plus the one running now
+    six = client.get("/api/stats/timeline?minutes=10080&bucket=21600&align=true&utc_offset=330").json()
+    assert (six["since"] + 330 * 60) % 21600 == 0  # 00:00, 06:00, 12:00, 18:00 local
+    plain = client.get("/api/stats/timeline?minutes=60&bucket=60").json()
+    assert plain["count"] == 60
+
+
 def test_upload_rejects_bad_files(client):
     assert client.post("/api/uploads?filename=evil.exe", content=b"MZ...").status_code == 400
     assert client.post("/api/uploads?filename=empty.mp4", content=b"").status_code == 400

@@ -9,9 +9,9 @@
 
 ## 1. Where we are now
 
-*Updated 27 Nov 2026.* The system works end to end: a FastAPI server takes a laptop webcam, a phone over USB or Wi-Fi, a phone's browser via QR code, or a video file; detects and tracks dogs; labels resting / walking / running from normalised speed; raises zone, running-at-person and pack alerts with photo and clip; stores everything in SQLite; and shows it in a browser console with live video, dog profiles, analytics, bites-data charts and settings. 16 pull requests, 142 passing tests.
+*Updated 28 Nov 2026.* The system works end to end: a FastAPI server takes a laptop webcam, a phone over USB or Wi-Fi, a phone's browser via QR code, or a video file; detects and tracks dogs; labels resting / walking / running from normalised speed; raises zone, running-at-person and pack alerts with photo and clip; stores everything in SQLite; and shows it in a React dashboard (Overview, Live, Alerts, Dogs, Activity, Bites data, Cameras, Settings, Help) with a guided first-run setup and a presentation view for the pitch. The older one-page console stays at `/console`. 147 Python and 18 frontend tests pass.
 
-Still to do: our own trained models (the detector still uses the **stock YOLO11n**, and the behaviour classifier has its scripts but no labelled clips), the dog pose model, recognising the same dog across days, and a proper dashboard app with guided setup. The tools for collecting frames, labelling and evaluating are in `training/`.
+Still to do: our own trained models (the detector still uses the **stock YOLO11n**, and the behaviour classifier has its scripts but no labelled clips), the dog pose model, and recognising the same dog across days. The tools for collecting frames, labelling and evaluating are in `training/`.
 
 ---
 
@@ -138,9 +138,10 @@ MINI-PROJECT/
 
 ## 8. Demo checklist (definition of done)
 
-*Status on 27 Nov 2026.*
+*Status on 28 Nov 2026.*
 
 - [x] Dashboard opens with one command (`start.bat`)
+- [x] Dashboard app with one page per job, a guided first-run setup and a presentation view
 - [x] Laptop webcam, phone over USB and phone over Wi-Fi/QR all work as sources
 - [ ] Fine-tuned detector shows a measurable improvement over the stock model on our own test set (evaluation tools ready, needs labelled footage)
 - [ ] Behaviour classifier with reported accuracy / F1 / confusion matrix (training scripts ready, needs labelled clips)

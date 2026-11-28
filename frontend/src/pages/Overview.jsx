@@ -23,7 +23,7 @@ function NoCameras() {
 }
 
 export default function Overview() {
-  const { sources, live } = useLive();
+  const { sources, live, sourcesError } = useLive();
   const [picked, setPicked] = useState(null);
   const summary = usePoll("/api/stats/summary?minutes=1440", { every: 15000, onEvent: true });
   const alerts = usePoll("/api/alerts?limit=3", { onEvent: true });
@@ -36,6 +36,13 @@ export default function Overview() {
     }
   }, [sources, picked]);
 
+  if (sourcesError && !sources?.length) {
+    return (
+      <section className="stage on-asphalt">
+        <EmptyState dark title="The server isn't answering">Start DogWatch again with start.bat (or start.sh). This page reconnects by itself.</EmptyState>
+      </section>
+    );
+  }
   if (sources && !sources.length) return <NoCameras />;
 
   const names = Object.fromEntries((sources || []).map((s) => [s.id, s.name]));

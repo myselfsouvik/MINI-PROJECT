@@ -30,8 +30,9 @@ function NumbersTable({ head, rows }) {
 
 function Timeline({ data, rangeKey, t }) {
   const r = RANGES[rangeKey];
-  const since = Date.now() / 1000 - r.minutes * 60;
-  const rows = fillTimeline(data.buckets, since, r.bucket, r.minutes);
+  // The server starts the buckets on a round local time (14:00, not 14:07) and says where.
+  const since = data.since ?? Date.now() / 1000 - r.minutes * 60;
+  const rows = fillTimeline(data.buckets, since, r.bucket, ((data.count ?? r.minutes * 60 / r.bucket) * r.bucket) / 60);
   const total = rows.reduce((s, b) => s + b.RESTING + b.WALKING + b.RUNNING, 0);
   if (!total) return <p className="muted chart-empty">No dogs were seen in this period.</p>;
   const chart = {
@@ -110,7 +111,7 @@ export default function Activity() {
   const src = cam ? `&source_id=${encodeURIComponent(cam)}` : "";
   const every = { every: 30000 };
   const summary = usePoll(`/api/stats/summary?minutes=${r.minutes}`, every);
-  const timeline = usePoll(`/api/stats/timeline?minutes=${r.minutes}&bucket=${r.bucket}${src}`, every);
+  const timeline = usePoll(`/api/stats/timeline?minutes=${r.minutes}&bucket=${r.bucket}&align=true&utc_offset=${-new Date().getTimezoneOffset()}${src}`, every);
   const heat = usePoll(`/api/stats/heatmap?minutes=${r.minutes}&cols=24&rows=14${src}`, every);
   const speeds = usePoll(`/api/stats/speeds?minutes=${r.minutes}&bin_width=0.25&max_speed=4${src}`, every);
   const s = summary.data;

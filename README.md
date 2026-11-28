@@ -2,7 +2,7 @@
 
 A computer-vision mini project that watches street dogs through any camera (laptop webcam, a phone over USB or Wi-Fi, a phone's own browser, or a video file). It uses **YOLO11** to find every dog, follows each one, works out whether it is resting, walking or running, raises alerts, and shows everything live in the browser. It also turns a public **animal-bite dataset** (7,029 dog-bite records) into charts.
 
-**Status (27 Nov 2026):** the system works end to end; our own trained models are the next big step (see the checklist in [PLAN.md](PLAN.md#8-demo-checklist-definition-of-done)).
+**Status (28 Nov 2026):** the system works end to end; our own trained models are the next big step (see the checklist in [PLAN.md](PLAN.md#8-demo-checklist-definition-of-done)).
 
 ## Features
 
@@ -21,7 +21,7 @@ A computer-vision mini project that watches street dogs through any camera (lapt
 
 ```
 MINI-PROJECT/
-├── backend/             # FastAPI server, cameras, inference, storage, console
+├── backend/             # FastAPI server, cameras, inference, storage, classic console
 │   ├── server.py        # start the web server: python -m backend.server
 │   ├── app.py           # API routes, live video stream, WebSocket
 │   ├── pipeline.py      # detection + tracking + behaviour per camera
@@ -35,7 +35,7 @@ MINI-PROJECT/
 │   └── camera_test.py   # command-line camera checker
 ├── docs/PHONE_CAMERA.md # how to connect a phone as the camera
 ├── tests/               # automated tests (python -m pytest tests)
-├── frontend/            # (planned) dashboard app
+├── frontend/            # React dashboard: pages, guided setup, presentation view
 ├── training/            # detector/: recordings → pre-labelled frames → evaluation table; behaviour/: clips → features → classifier
 ├── notebooks/           # (in progress) bites dataset EDA
 ├── models/
@@ -88,7 +88,9 @@ python -m backend.server --source 0        # or 1 for a USB phone, or a video fi
 python -m backend.server --phone           # phones connect from their browser by scanning a QR code
 ```
 
-Open http://127.0.0.1:8000 for the console: **Live** (video, dogs on camera now, alerts, zones), **Dogs** (profiles), **Activity** (charts and session reports), **Cameras** (add a webcam, phone or video), **Bites data** and **Settings** (model, speed, storage, CSV export). API docs are at http://127.0.0.1:8000/docs. Details: [backend/README.md](backend/README.md).
+Open http://127.0.0.1:8000 for the dashboard. The first time, a guided setup walks you through adding a camera, checking a dog is seen and marking a zone. Pages: **Overview** (what is happening now), **Live** (one camera big, zones, recording), **Alerts**, **Dogs** (profiles), **Activity** (charts and session reports), **Bites data**, **Cameras**, **Settings** and **Help**, plus a **Presentation view** for showing it to a class. API docs are at http://127.0.0.1:8000/docs. Details: [frontend/README.md](frontend/README.md) and [backend/README.md](backend/README.md).
+
+The dashboard needs [Node.js](https://nodejs.org) once, to build it (`start.bat` does this). Without Node.js, the older one-page console opens instead; it is always at http://127.0.0.1:8000/console.
 
 ### Original prototype scripts
 
@@ -127,7 +129,7 @@ python -m pytest tests -q
 3. **Speed**: how far the centre of the box moved, divided by the box height and the time between frames, gives **dog-body-heights per second**, averaged over about a second.
 4. **Activity**: under 0.25 is resting, under 1.5 is walking, anything faster is running. If a trained behaviour classifier is in `models/`, it is used instead.
 5. **Alerts**: zone, running towards a person, and pack rules run on every frame; each alert saves a photo and a short clip.
-6. **Storage**: dogs, one position per dog per second, and events go into SQLite; the console reads them through the API and a live WebSocket.
+6. **Storage**: dogs, one position per dog per second, and events go into SQLite; the dashboard reads them through the API and a live WebSocket.
 
 The original prototype scripts in `legacy/` work the old way (pixels per second, LOW / NORMAL / HIGH) and are kept for reference.
 
@@ -144,7 +146,6 @@ The original prototype scripts in `legacy/` work the old way (pixels per second,
 
 ## Next steps
 
-- A dashboard app with separate pages and a guided first-run setup.
 - Record and label our own footage, fine-tune the detector and train the behaviour classifier, with before/after metrics.
 - Recognise the same dog across days, the base for a street-dog census.
 

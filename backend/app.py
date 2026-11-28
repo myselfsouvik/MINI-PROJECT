@@ -54,6 +54,7 @@ import csv
 import io
 import itertools
 import json
+import math
 import mimetypes
 import re
 import threading
@@ -742,12 +743,24 @@ def create_app(settings: AppSettings | None = None, initial_sources: list[str] |
 
     @app.get("/api/stats/timeline")
     def stats_timeline(minutes: float = Query(60, gt=0, le=60 * 24 * 30),
-                       bucket: float = Query(60, ge=5), source_id: str | None = None):
-        """Dog-seconds per activity in each time bucket (bucket = seconds)."""
+                       bucket: float = Query(60, ge=5), source_id: str | None = None,
+                       align: bool = Query(False, description="start buckets on whole minutes/hours of local time"),
+                       utc_offset: float = Query(0, ge=-14 * 60, le=14 * 60,
+                                                 description="the viewer's minutes ahead of UTC, for align")):
+        """Dog-seconds per activity in each time bucket (bucket = seconds).
+
+        With ``align`` the first bucket starts on a round local time (14:00 rather than 14:07),
+        so the range starts up to one bucket earlier and has one more bucket.
+        """
         if minutes * 60 / bucket > 2000:
             raise HTTPException(400, "Too many buckets: use a bigger bucket for this time range.")
-        since = time.time() - minutes * 60
-        return {"minutes": minutes, "bucket": bucket,
+        now = time.time()
+        since = now - minutes * 60
+        if align:
+            shift = utc_offset * 60
+            since = math.floor((since + shift) / bucket) * bucket - shift
+        count = math.ceil((now - since) / bucket - 1e-9)
+        return {"minutes": minutes, "bucket": bucket, "since": since, "count": count,
                 "buckets": db.activity_timeline(since, bucket, source_id)}
 
     @app.get("/api/stats/speeds")
