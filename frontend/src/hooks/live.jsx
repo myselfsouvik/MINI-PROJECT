@@ -75,6 +75,7 @@ export function LiveProvider({ children }) {
       };
       ws.onclose = () => {
         setConnected(false);
+        setLive({});                       // don't show old dog counts as if they were live
         if (!closed) retry = setTimeout(connect, 2000);
       };
     };

@@ -9,9 +9,9 @@
 
 ## 1. Where we are now
 
-*Updated 27 Nov 2026.* The system works end to end: a FastAPI server takes a laptop webcam, a phone over USB or Wi-Fi, a phone's browser via QR code, or a video file; detects and tracks dogs; labels resting / walking / running from normalised speed; raises zone, running-at-person and pack alerts with photo and clip; stores everything in SQLite; and shows it in a browser console with live video, dog profiles, analytics, bites-data charts and settings. 16 pull requests, 142 passing tests.
+*Updated 28 Nov 2026.* The system works end to end: a FastAPI server takes a laptop webcam, a phone over USB or Wi-Fi, a phone's browser via QR code, or a video file; detects and tracks dogs; labels resting / walking / running from normalised speed; raises zone, running-at-person and pack alerts with photo and clip; stores everything in SQLite; and shows it in a React dashboard (Overview, Live, Alerts, Dogs, Activity, Bites data, Cameras, Settings, Help) with a guided first-run setup and a presentation view for the pitch. The older one-page console stays at `/console`. 147 Python and 18 frontend tests pass.
 
-Still to do: our own trained models (the detector still uses the **stock YOLO11n**, and the behaviour classifier has its scripts but no labelled clips), the dog pose model, recognising the same dog across days, and a proper dashboard app with guided setup. The tools for collecting frames, labelling and evaluating are in `training/`.
+Still to do: our own trained models (the detector still uses the **stock YOLO11n**, and the behaviour classifier has its scripts but no labelled clips), the dog pose model, and recognising the same dog across days. The tools for collecting frames, labelling and evaluating are in `training/`.
 
 ---
 
@@ -85,21 +85,7 @@ Drop the rabies classifier (1 positive case can't train anything). Instead do a 
 
 ---
 
-## 4. Who does what (proposal, so discuss and swap freely)
-
-| Person | Area | Deliverables |
-|---|---|---|
-| **Jagrit** | Backend + camera integration | FastAPI server, CameraManager (webcam, USB phone, IP URL, browser-phone over WebSocket, video file), inference worker, SQLite schema, live stream to frontend, repo setup (`requirements.txt`, `.gitignore`, folder structure) |
-| **Nandini** | Frontend dashboard | React app: Live, Dogs, Analytics, Alerts, Zones, Model, Insights pages; source picker + QR connect; charts |
-| **Souvik** | Detector fine-tuning | Baseline evaluation, training runs on Colab, model comparison table, ONNX/OpenVINO export |
-| **Shalmali** | Data collection + labelling + evaluation | Record street-dog footage, build train/test sets, label in CVAT/Roboflow, hard-negative images, dataset documentation |
-| **Samaraho** | Behaviour ML + bites EDA | Normalised speed + smoothing, dog-pose fine-tune, behaviour classifier, alert rules, bites EDA notebook |
-
-Everyone: write their own section of the final report and prepare their part of the demo.
-
----
-
-## 5. Timeline (6 weeks, adjust to our submission date)
+## 4. Timeline (6 weeks, adjust to our submission date)
 
 | Week | Milestone |
 |---|---|
@@ -112,7 +98,7 @@ Everyone: write their own section of the final report and prepare their part of 
 
 ---
 
-## 6. Proposed folder structure
+## 5. Proposed folder structure
 
 ```
 MINI-PROJECT/
@@ -129,18 +115,18 @@ MINI-PROJECT/
 └── README.md
 ```
 
-## 7. How we work
+## 6. How we work
 
 - One branch per feature (`feature/phone-camera`, `feature/dashboard-live`, …). Merge to `main` through pull requests, reviewed by one other person.
 - **Don't commit datasets, training runs or videos.** Keep them in a shared Google Drive folder and link it in the README.
-- Owner (Souvik) adds Samaraho, Nandini and Shalmali as GitHub collaborators.
 - Short sync twice a week. Update the checklist below.
 
-## 8. Demo checklist (definition of done)
+## 7. Demo checklist (definition of done)
 
-*Status on 27 Nov 2026.*
+*Status on 28 Nov 2026.*
 
 - [x] Dashboard opens with one command (`start.bat`)
+- [x] Dashboard app with one page per job, a guided first-run setup and a presentation view
 - [x] Laptop webcam, phone over USB and phone over Wi-Fi/QR all work as sources
 - [ ] Fine-tuned detector shows a measurable improvement over the stock model on our own test set (evaluation tools ready, needs labelled footage)
 - [ ] Behaviour classifier with reported accuracy / F1 / confusion matrix (training scripts ready, needs labelled clips)

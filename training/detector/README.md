@@ -1,6 +1,6 @@
 # detector
 
-Fine-tuning the YOLO dog detector (PLAN 3.1). Owner: Souvik.
+Fine-tuning the YOLO dog detector (PLAN 3.1).
 
 The steps below go from our own camera recordings to a better model shown in the dashboard.
 

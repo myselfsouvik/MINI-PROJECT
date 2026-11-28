@@ -98,7 +98,7 @@ function TabBar({ unseen, onMenu }) {
 export default function Layout() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
-  const { unseen, markAlertsSeen, sources } = useLive();
+  const { unseen, markAlertsSeen, sources, sourcesError, connected } = useLive();
   const [drawer, setDrawer] = useState(false);
   const [checked, setChecked] = useState(false);
   const title = pageTitle(pathname);
@@ -107,10 +107,10 @@ export default function Layout() {
   useEffect(() => { if (pathname === "/alerts") markAlertsSeen(); }, [pathname, markAlertsSeen]);
   // First visit with nothing connected: open the guided setup once.
   useEffect(() => {
-    if (checked || !Array.isArray(sources)) return;
+    if (checked || !Array.isArray(sources) || sourcesError) return;
     setChecked(true);
     if (shouldOpenSetup({ sources, pathname, done: setupDone() })) navigate("/welcome", { replace: true });
-  }, [checked, sources, pathname, navigate]);
+  }, [checked, sources, sourcesError, pathname, navigate]);
   useEffect(() => {
     if (!drawer) return undefined;
     const esc = (e) => e.key === "Escape" && setDrawer(false);
@@ -124,6 +124,11 @@ export default function Layout() {
       {drawer ? <div className="scrim" onClick={() => setDrawer(false)} /> : null}
       <div className="main">
         <TopBar title={title} onMenu={() => setDrawer(true)} />
+        {sourcesError && connected === false ? (
+          <p className="offline" role="alert">
+            <b>Can't reach the DogWatch server.</b> Check that it is still running (start.bat or start.sh). Trying again every few seconds…
+          </p>
+        ) : null}
         <main className="content" id="content"><Outlet /></main>
       </div>
       <TabBar unseen={unseen} onMenu={() => setDrawer(true)} />
