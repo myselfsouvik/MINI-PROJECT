@@ -85,21 +85,7 @@ Drop the rabies classifier (1 positive case can't train anything). Instead do a 
 
 ---
 
-## 4. Who does what (proposal, so discuss and swap freely)
-
-| Person | Area | Deliverables |
-|---|---|---|
-| **Jagrit** | Backend + camera integration | FastAPI server, CameraManager (webcam, USB phone, IP URL, browser-phone over WebSocket, video file), inference worker, SQLite schema, live stream to frontend, repo setup (`requirements.txt`, `.gitignore`, folder structure) |
-| **Nandini** | Frontend dashboard | React app: Live, Dogs, Analytics, Alerts, Zones, Model, Insights pages; source picker + QR connect; charts |
-| **Souvik** | Detector fine-tuning | Baseline evaluation, training runs on Colab, model comparison table, ONNX/OpenVINO export |
-| **Shalmali** | Data collection + labelling + evaluation | Record street-dog footage, build train/test sets, label in CVAT/Roboflow, hard-negative images, dataset documentation |
-| **Samaraho** | Behaviour ML + bites EDA | Normalised speed + smoothing, dog-pose fine-tune, behaviour classifier, alert rules, bites EDA notebook |
-
-Everyone: write their own section of the final report and prepare their part of the demo.
-
----
-
-## 5. Timeline (6 weeks, adjust to our submission date)
+## 4. Timeline (6 weeks, adjust to our submission date)
 
 | Week | Milestone |
 |---|---|
@@ -112,7 +98,7 @@ Everyone: write their own section of the final report and prepare their part of 
 
 ---
 
-## 6. Proposed folder structure
+## 5. Proposed folder structure
 
 ```
 MINI-PROJECT/
@@ -129,14 +115,13 @@ MINI-PROJECT/
 └── README.md
 ```
 
-## 7. How we work
+## 6. How we work
 
 - One branch per feature (`feature/phone-camera`, `feature/dashboard-live`, …). Merge to `main` through pull requests, reviewed by one other person.
 - **Don't commit datasets, training runs or videos.** Keep them in a shared Google Drive folder and link it in the README.
-- Owner (Souvik) adds Samaraho, Nandini and Shalmali as GitHub collaborators.
 - Short sync twice a week. Update the checklist below.
 
-## 8. Demo checklist (definition of done)
+## 7. Demo checklist (definition of done)
 
 *Status on 28 Nov 2026.*
 

@@ -2,7 +2,7 @@
 
 A computer-vision mini project that watches street dogs through any camera (laptop webcam, a phone over USB or Wi-Fi, a phone's own browser, or a video file). It uses **YOLO11** to find every dog, follows each one, works out whether it is resting, walking or running, raises alerts, and shows everything live in the browser. It also turns a public **animal-bite dataset** (7,029 dog-bite records) into charts.
 
-**Status (28 Nov 2026):** the system works end to end; our own trained models are the next big step (see the checklist in [PLAN.md](PLAN.md#8-demo-checklist-definition-of-done)).
+**Status (28 Nov 2026):** the system works end to end; our own trained models are the next big step (see the checklist in [PLAN.md](PLAN.md#7-demo-checklist-definition-of-done)).
 
 ## Features
 
@@ -52,7 +52,7 @@ MINI-PROJECT/
 │   └── cleaned_animal_bites_dogs.csv    # Output of preprocessing.py
 ├── start.bat / start.sh # one-command start (dashboard + phone QR)
 ├── requirements.txt
-└── PLAN.md              # Roadmap and who does what
+└── PLAN.md              # Roadmap and demo checklist
 ```
 
 ## Setup

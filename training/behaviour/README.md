@@ -1,6 +1,6 @@
 # behaviour
 
-Behaviour classifier (lying / sitting / standing / walking / running). Owner: Samaraho.
+Behaviour classifier (lying / sitting / standing / walking / running).
 
 The backend already has a working pipeline for it, from labelled clips to the live dashboard. It uses movement features only, as a baseline. Improve it from here, for example by adding pose features or more labels.
 

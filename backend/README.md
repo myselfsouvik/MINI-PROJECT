@@ -1,6 +1,6 @@
 # backend
 
-FastAPI server, camera manager, inference worker and SQLite storage. Owner: Jagrit.
+FastAPI server, camera manager, inference worker and SQLite storage.
 
 ## Run it
 
