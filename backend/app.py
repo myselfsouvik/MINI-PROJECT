@@ -54,6 +54,7 @@ import csv
 import io
 import itertools
 import json
+import mimetypes
 import re
 import threading
 import time
@@ -81,6 +82,13 @@ from backend.security import check_source, is_local_client, token_ok
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC_DIR = Path(__file__).resolve().parent / "static"
+
+# Windows takes file types from the registry, where .js is often "text/plain"; browsers then refuse
+# to run the dashboard's scripts. Register the web types ourselves so every laptop serves them right.
+for _type, _ext in [("text/javascript", ".js"), ("text/javascript", ".mjs"), ("text/css", ".css"),
+                    ("image/svg+xml", ".svg"), ("font/woff2", ".woff2"), ("font/woff", ".woff"),
+                    ("application/json", ".json"), ("application/manifest+json", ".webmanifest")]:
+    mimetypes.add_type(_type, _ext)
 
 
 @dataclass

@@ -14,5 +14,7 @@ if exist .venv\Scripts\activate.bat (
     pause
     exit /b 1
 )
+rem Builds the dashboard the first time and after a git pull changes it (needs Node.js).
+python -m backend.build_frontend
 python -m backend.server --open --phone %*
 pause

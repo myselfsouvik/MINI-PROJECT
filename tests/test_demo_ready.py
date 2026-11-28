@@ -41,7 +41,9 @@ def test_dashboard_is_served_when_built(tmp_path, dist):
     with TestClient(make(tmp_path, dist), client=LOCAL) as c:
         assert "REACT DASHBOARD" in c.get("/").text
         assert 'id="dogwatch-console"' in c.get("/console").text
-        assert c.get("/assets/app.js").text == "console.log('hi')"
+        js = c.get("/assets/app.js")
+        assert js.text == "console.log('hi')"
+        assert js.headers["content-type"].startswith("text/javascript")      # not text/plain from the Windows registry
         assert "REACT DASHBOARD" in c.get("/dogs/12").text          # client-side route
         assert c.get("/assets/missing.js").status_code == 404
         assert c.get("/api/nothing-here").status_code == 404           # API paths never get index.html

@@ -1,0 +1,54 @@
+/* DogWatch design tokens. Same language as the classic console:
+   whitewashed-wall green-grey ground, asphalt stage for live video, marigold road-marking accent,
+   and one colour per activity. */
+:root {
+  --ground: #E9EDE6;
+  --sheet: #F7F9F5;
+  --sheet-2: #EFF3EC;
+  --ink: #18231D;
+  --muted: #5B6860;
+  --line: #CDD5CC;
+  --asphalt: #232B27;
+  --asphalt-2: #2F3933;
+  --asphalt-line: #4A5750;
+  --asphalt-ink: #E6ECE7;
+  --asphalt-muted: #9FAEA5;
+  --marigold: #F0A202;
+  --marigold-ink: #1E1A0C;
+  --link: #1E6B45;
+  --ok: #2F8F55;
+  --ok-glow: rgba(95, 208, 138, 0.2);
+  --alert: #B9361E;
+  --alert-soft: #F7E1DA;
+  --rest: #3D78A8;
+  --walk: #2F8F55;
+  --run: #D5422A;
+
+  --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+
+  --r-stage: 16px;
+  --r-sheet: 12px;
+  --r-control: 8px;
+  --sidebar: 232px;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ground: #121815;
+    --sheet: #1A221E;
+    --sheet-2: #202A25;
+    --ink: #E4EBE5;
+    --muted: #93A198;
+    --line: #2E3A33;
+    --asphalt: #0D1310;
+    --asphalt-2: #1B241F;
+    --asphalt-line: #34413A;
+    --link: #7CCB9C;
+    --ok: #5FD08A;
+    --alert: #FF8466;
+    --alert-soft: #3A1F18;
+    color-scheme: dark;
+  }
+}
