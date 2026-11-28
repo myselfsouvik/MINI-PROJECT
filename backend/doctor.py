@@ -166,7 +166,8 @@ def check_cameras() -> Check:
 def check_frontend(dist: Path) -> Check:
     if (dist / "index.html").is_file():
         return Check("Dashboard", OK, f"React build found ({dist.relative_to(ROOT)})")
-    return Check("Dashboard", OK, "test console (React dashboard not built yet: cd frontend && npm run build)")
+    return Check("Dashboard", WARN, "classic console (no dashboard build in frontend/dist)",
+                 "Get frontend/dist from git again, or install Node.js and run: cd frontend && npm run build")
 
 
 def check_demo_video(path: Path) -> Check:

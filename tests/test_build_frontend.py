@@ -5,11 +5,9 @@ happens without Node.js or when npm fails (the server must still start).
 
 from __future__ import annotations
 
-import os
-import time
 from types import SimpleNamespace
 
-from backend.build_frontend import build, needs_build
+from backend.build_frontend import FRONTEND, build, needs_build, source_hash, write_stamp
 
 
 def make_frontend(tmp_path, built=False, modules=False):
@@ -31,10 +29,23 @@ def test_needs_build(tmp_path):
     assert "hasn't been built" in needs_build(fe)
     (fe / "dist").mkdir()
     (fe / "dist" / "index.html").write_text("<html>")
+    assert "changed" in needs_build(fe)                                  # a build without a fingerprint
+    write_stamp(fe)
     assert needs_build(fe) is None
-    later = time.time() + 60                                             # someone pulled new code
-    os.utime(fe / "src" / "main.jsx", (later, later))
+    (fe / "src" / "main.jsx").write_text("y")                            # someone pulled new code
     assert "changed" in needs_build(fe)
+
+
+def test_fingerprint_ignores_line_endings_and_file_dates(tmp_path):
+    a, b = make_frontend(tmp_path / "a"), make_frontend(tmp_path / "b")
+    (a / "src" / "main.jsx").write_bytes(b"one\ntwo\n")
+    (b / "src" / "main.jsx").write_bytes(b"one\r\ntwo\r\n")          # a Windows checkout
+    assert source_hash(a) == source_hash(b)
+
+
+def test_shipped_build_matches_the_code():
+    """frontend/dist is in git so nobody needs Node.js. After changing frontend/, run npm run build."""
+    assert needs_build(FRONTEND) is None, "frontend/dist is out of date: run `npm run build` in frontend/"
 
 
 def test_build_installs_packages_once(tmp_path):
@@ -53,5 +64,9 @@ def test_build_without_node_or_with_errors(tmp_path, capsys):
     fe = make_frontend(tmp_path, modules=True)
     assert build(fe, which=lambda _: None) is False
     assert "classic console" in capsys.readouterr().out
+    (fe / "dist").mkdir()
+    (fe / "dist" / "index.html").write_text("<html>")
+    assert build(fe, which=lambda _: None) is False
+    assert "came with the code" in capsys.readouterr().out
     assert build(fe, run=lambda cmd, cwd: SimpleNamespace(returncode=1), which=lambda _: "npm") is False
     assert "failed" in capsys.readouterr().out

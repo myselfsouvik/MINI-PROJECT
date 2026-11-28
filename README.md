@@ -55,31 +55,46 @@ MINI-PROJECT/
 └── PLAN.md              # Roadmap and demo checklist
 ```
 
-## Setup
+## How to run
 
-- Python 3.10 – 3.12 (recommended; 3.11 is what we test with)
-- A webcam, or a phone used as a webcam (see PLAN.md)
+### Quick start (a fresh clone, nothing installed)
+
+1. **Install Python** 3.11 from https://www.python.org/downloads/ (on Windows, tick **"Add python.exe to PATH"**).
+   On Windows you can skip this: `start.bat` offers to install it for you.
+2. **Start DogWatch:**
+   - Windows: double-click **`start.bat`** in the project folder.
+   - macOS / Linux: run `./start.sh` in a terminal.
+3. The browser opens **http://127.0.0.1:8000** and a guided setup starts. No dog nearby? Pick **Demo video**.
+
+The first start installs everything into a private `.venv` folder (about 1 GB, 5 to 15 minutes, needs internet once).
+Later starts take a few seconds and work offline. To stop it, close the window (or press Ctrl+C).
+
+That's all: no Node.js, database or other setup. The dashboard comes ready-built in `frontend/dist`, the detector
+model is in `models/`, and the data is stored in a local SQLite file. Nothing is deployed or sent anywhere.
+
+```bash
+start.bat --demo                  # also play the backup demo video (3 dogs, a demo zone) straight away
+start.bat --source 1              # also watch webcam / USB phone number 1
+./start.sh --demo                 # macOS / Linux
+python -m backend.doctor          # (inside .venv) checks Python, packages, model speed, ports, Wi-Fi; says what to fix
+```
+
+Phones on the same Wi-Fi can join as cameras by scanning the QR code on the **Cameras** page.
+
+**If something goes wrong:** delete the `.venv` folder and start again. If the install fails on a very new Python
+(3.13 or later), install Python 3.11 and delete `.venv`. On Ubuntu/Debian, `sudo apt install python3-venv` first.
+
+### Manual setup (for development)
 
 ```bash
 python -m venv .venv
-# Windows
-.venv\Scripts\activate
-# macOS / Linux
-source .venv/bin/activate
-
+.venv\Scripts\activate            # Windows
+source .venv/bin/activate         # macOS / Linux
 pip install -r requirements.txt
 ```
 
-## How to run
-
-### Demo day: one command
-
-```bash
-python -m backend.doctor          # checks Python, packages, model speed, ports, Wi-Fi; says what to fix
-start.bat                         # Windows: double-click. Opens the dashboard, phones can scan the QR code
-start.bat --demo                  # same + backup demo video (3 dogs, demo zone) if no dog shows up
-./start.sh --demo                 # macOS / Linux
-```
+Working on the dashboard needs Node.js: see [frontend/README.md](frontend/README.md). After changing `frontend/`,
+run `npm run build` and commit `frontend/dist` too, so everyone else gets the change without Node.js.
 
 ### Backend server
 
@@ -90,7 +105,7 @@ python -m backend.server --phone           # phones connect from their browser b
 
 Open http://127.0.0.1:8000 for the dashboard. The first time, a guided setup walks you through adding a camera, checking a dog is seen and marking a zone. Pages: **Overview** (what is happening now), **Live** (one camera big, zones, recording), **Alerts**, **Dogs** (profiles), **Activity** (charts and session reports), **Bites data**, **Cameras**, **Settings** and **Help**, plus a **Presentation view** for showing it to a class. API docs are at http://127.0.0.1:8000/docs. Details: [frontend/README.md](frontend/README.md) and [backend/README.md](backend/README.md).
 
-The dashboard needs [Node.js](https://nodejs.org) once, to build it (`start.bat` does this). Without Node.js, the older one-page console opens instead; it is always at http://127.0.0.1:8000/console.
+The older one-page console is still at http://127.0.0.1:8000/console.
 
 ### Original prototype scripts
 

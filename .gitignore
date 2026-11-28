@@ -32,9 +32,8 @@ backend/storage/
 *.db
 *.sqlite3
 
-# Frontend
+# Frontend (frontend/dist is kept, so the dashboard works without Node.js)
 node_modules/
-frontend/dist/
 
 # OS / editors
 .DS_Store

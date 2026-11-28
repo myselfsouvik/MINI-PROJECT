@@ -27,8 +27,8 @@ buttons fade away when the mouse is still. With several cameras, pick one in the
 
 ## Running it
 
-You don't need Node.js to *use* the dashboard: `start.bat` / `start.sh` build it the first time (when Node.js is installed)
-and the server serves `frontend/dist`. To work on it:
+You don't need Node.js to *use* the dashboard: the built app is kept in git (`frontend/dist`) and the server serves it.
+Node.js is only needed to change it:
 
 ```bash
 python -m backend.server --demo     # the backend on :8000, with the demo video
@@ -36,8 +36,12 @@ cd frontend
 npm install
 npm run dev                         # http://localhost:5173, changes show up straight away
 npm test                            # unit tests (Vitest)
-npm run build                       # writes frontend/dist, which the server picks up on the next page load
+npm run build                       # writes frontend/dist (commit it too), served on the next page load
 ```
+
+`npm run build` also writes `dist/source.sha256`, a fingerprint of the code it was built from. A test
+(`tests/test_build_frontend.py`) fails when `frontend/` changed but `dist` wasn't rebuilt, and `start.bat` rebuilds it
+by itself on computers that have Node.js.
 
 `vite.config.js` forwards `/api`, `/media` and `/ws` to the backend on port 8000, so the code only uses relative URLs.
 
